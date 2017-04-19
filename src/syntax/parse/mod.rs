@@ -46,9 +46,7 @@ impl<'a> Parser<'a> {
             Token::Num(num) => Ok(ast::Expr::Term(ast::Term::Literal(num))),
             Token::OpenParen => {
                 let expr = self.expr()?;
-                if self.lexer.next() != Token::CloseParen {
-                    return Err(());
-                }
+                self.token(Token::CloseParen)?;
                 Ok(expr)
             }
             _ => Err(()),
@@ -237,9 +235,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expr(&mut self) -> Result<ast::Expr<'a>> {
-        let expr = self.expr13();
-        self.token(Token::Semicolon)?;
-        expr
+        self.expr13()
     }
 
     pub fn decl(&mut self) -> Result<ast::Decl<'a>> {
@@ -251,9 +247,7 @@ impl<'a> Parser<'a> {
         let expr = match self.lexer.next() {
             Token::Semicolon => None,
             Token::Eq => {
-                let expr = self.expr13()?;
-                self.token(Token::Semicolon)?;
-                Some(expr)
+                Some(self.expr()?)
             }
             _ => return Err(()),
         };
@@ -274,6 +268,7 @@ impl<'a> Parser<'a> {
         let mut statements = Vec::new();
         while let Err(_) = try_parse!(self, self.token(Token::Eof)) {
             statements.push(self.statement()?);
+            self.token(Token::Semicolon)?;
         }
         Ok(ast::Ast { statements })
     }
@@ -281,35 +276,35 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 fn assert_parse_eq(left: &str, right: &str) {
-    assert_eq!(Parser::new(left).expr().unwrap(), Parser::new(right).expr().unwrap());
+    assert_eq!(Parser::new(left).parse().unwrap(), Parser::new(right).parse().unwrap());
 }
 
 #[test]
 fn test_unary_expr() {
-    assert_parse_eq("+-+1", "(+ (- (+ 1)))");
+    assert_parse_eq("+-+1;", "(+ (- (+ 1)));");
 }
 
 #[test]
 fn test_sum_expr() {
-    assert_parse_eq("-1 + 2 * +4", "((- 1) + (2 * (+ 4)))");
+    assert_parse_eq("-1 + 2 * +4;", "((- 1) + (2 * (+ 4)));");
 }
 
 #[test]
 fn test_factor_expr() {
-    assert_parse_eq("1 * 2 / 4", "((1 * 2) / 4)");
+    assert_parse_eq("1 * 2 / 4;", "((1 * 2) / 4);");
 }
 
 #[test]
 fn test_assign_expr() {
-    assert_parse_eq("x = -2 + +4", "(x = ((- 2) + (+ 4)))");
+    assert_parse_eq("x = -2 + +4;", "(x = ((- 2) + (+ 4)));");
 }
 
 #[test]
 fn test_parens() {
-    assert_parse_eq("(2 * (x + 5))", "(2 * (x + 5))");
+    assert_parse_eq("(2 * (x + 5));", "(2 * (x + 5));");
 }
 
 #[test]
 fn test_left_associativity() {
-    assert_parse_eq("2 * a * 5 * b", "(((2 * a) * 5) * b)");
+    assert_parse_eq("2 * a * 5 * b;", "(((2 * a) * 5) * b);");
 }

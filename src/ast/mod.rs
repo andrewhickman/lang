@@ -1,5 +1,6 @@
 mod print;
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct Ast<'a> {
     pub statements: Vec<Statement<'a>>,
 }
