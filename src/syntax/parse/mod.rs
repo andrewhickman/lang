@@ -1,12 +1,13 @@
 mod buf;
+mod error;
 
 use std::result;
 
 use ast;
-use super::lex::Lexer;
-use super::{Stream, Token};
+use self::error::err;
+use super::{lex, Stream, Token};
 
-pub type Result<T> = result::Result<T, ()>;
+pub type Result<T> = result::Result<T, error::Error>;
 
 macro_rules! try_parse {
     ( $this:ident . $func:ident ) => {
@@ -22,21 +23,22 @@ macro_rules! try_parse {
 }
 
 pub struct Parser<'a> {
-    lexer: buf::StreamBuf<Lexer<'a>>,
+    lexer: buf::StreamBuf<lex::Lexer<'a>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(data: &'a str) -> Self {
         Parser {
-            lexer: buf::StreamBuf::new(Lexer::new(data)),
+            lexer: buf::StreamBuf::new(lex::Lexer::new(data)),
         }
     }
 
-    fn token(&mut self, tok: Token<'a>) -> Result<()> {
-        if self.lexer.next() == tok {
+    fn token(&mut self, needle: Token<'a>) -> Result<()> {
+        let tok = self.lexer.next();
+        if tok == needle {
             Ok(())
         } else {
-            Err(())
+            err(needle, tok)
         }
     }
 
@@ -48,8 +50,8 @@ impl<'a> Parser<'a> {
                 let expr = self.expr()?;
                 self.token(Token::CloseParen)?;
                 Ok(expr)
-            }
-            _ => Err(()),
+            },
+            tok => err("identifier or literal", tok),
         }
     }
 
@@ -77,7 +79,7 @@ impl<'a> Parser<'a> {
             Token::Minus => ast::UnaryOp::Minus,
             Token::PlusPlus => ast::UnaryOp::PreIncr,
             Token::MinusMinus => ast::UnaryOp::PreDecr,
-            _ => return Err(()),
+            tok => return err("operator", tok),
         };
         Ok(ast::Expr::Unary { op, arg: Box::new(self.expr2()?) })
     }
@@ -239,10 +241,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn decl(&mut self) -> Result<ast::Decl<'a>> {
-        self.token(Token::Let)?;
+        //self.token(Token::Let)?;
         let name = match self.lexer.next() {
             Token::Ident(name) => name,
-            _ => return Err(()),
+            tok => return err("identifier", tok),
         };
         let expr = try_parse!(self, match self.lexer.next() {
             Token::Eq => Ok(self.expr()?),
@@ -252,13 +254,11 @@ impl<'a> Parser<'a> {
     }
 
     pub fn statement(&mut self) -> Result<ast::Statement<'a>> {
-        if let Ok(expr) = try_parse!(self.expr) {
-            return Ok(ast::Statement::Expression(expr));
-        }
-        if let Ok(decl) = try_parse!(self.decl) {
-            return Ok(ast::Statement::Declaration(decl));
-        }
-        Err(())
+        // dodgy hack
+        Ok(match try_parse!(self, self.token(Token::Let)) {
+            Ok(_) => ast::Statement::Declaration(self.decl()?),
+            Err(_) => ast::Statement::Expression(self.expr()?),
+        })
     }
 
     pub fn parse(&mut self) -> Result<ast::Ast<'a>> {
@@ -304,4 +304,39 @@ fn test_parens() {
 #[test]
 fn test_left_associativity() {
     assert_parse_eq("2 * a * 5 * b;", "(((2 * a) * 5) * b);");
+}
+
+#[bench]
+fn bench_term(b: &mut ::test::Bencher) {
+    let mut data = String::new();
+    for _ in 0..100 {
+        data.push_str("x;");
+    }
+    b.iter(|| {
+        let _ = Parser::new(&data).parse();
+    })
+}
+
+#[bench]
+fn bench_decl(b: &mut ::test::Bencher) {
+    let mut data = String::new();
+    for _ in 0..100 {
+        data.push_str("let x;");
+    }
+    b.iter(|| {
+        let _ = Parser::new(&data).parse();
+    })
+}
+
+#[bench]
+fn bench_lex(b: &mut ::test::Bencher) {
+    let mut data = String::new();
+    for _ in 0..100 {
+        data.push_str("x;");
+    }
+    b.iter(|| {
+        let mut lexer = buf::StreamBuf::new(lex::Lexer::new(&data));
+        let _save = lexer.save();
+        while lexer.next() != Token::Eof {}
+    })
 }
