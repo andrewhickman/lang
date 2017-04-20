@@ -244,13 +244,10 @@ impl<'a> Parser<'a> {
             Token::Ident(name) => name,
             _ => return Err(()),
         };
-        let expr = match self.lexer.next() {
-            Token::Semicolon => None,
-            Token::Eq => {
-                Some(self.expr()?)
-            }
-            _ => return Err(()),
-        };
+        let expr = try_parse!(self, match self.lexer.next() {
+            Token::Eq => Ok(self.expr()?),
+            _ => Err(()),
+        }).ok();
         Ok(ast::Decl { name, expr })
     }
 
