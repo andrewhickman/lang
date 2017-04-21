@@ -5,7 +5,7 @@ use std::result;
 
 use ast;
 use self::error::err;
-use super::{lex, Stream, Token};
+use super::{Peekable, lex, Stream, Token};
 
 pub type Result<T> = result::Result<T, error::Error>;
 
@@ -33,12 +33,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn token(&mut self, needle: Token<'a>) -> Result<()> {
-        let tok = self.lexer.next();
-        if tok == needle {
+    fn expect(&mut self, tok: Token<'a>) -> Result<()> {
+        if self.lexer.eat(tok) {
             Ok(())
         } else {
-            err(needle, tok)
+            err(tok, self.lexer.peek())
         }
     }
 
@@ -48,7 +47,7 @@ impl<'a> Parser<'a> {
             Token::Num(num) => Ok(ast::Expr::Term(ast::Term::Literal(num))),
             Token::OpenParen => {
                 let expr = self.expr()?;
-                self.token(Token::CloseParen)?;
+                self.expect(Token::CloseParen)?;
                 Ok(expr)
             },
             tok => err("identifier or literal", tok),
@@ -246,26 +245,28 @@ impl<'a> Parser<'a> {
             Token::Ident(name) => name,
             tok => return err("identifier", tok),
         };
-        let expr = try_parse!(self, match self.lexer.next() {
-            Token::Eq => Ok(self.expr()?),
-            _ => Err(()),
-        }).ok();
+        let expr = if self.lexer.eat(Token::Eq) {
+            Some(self.expr()?)
+        } else {
+            None
+        };
         Ok(ast::Decl { name, expr })
     }
 
     pub fn statement(&mut self) -> Result<ast::Statement<'a>> {
         // dodgy hack
-        Ok(match try_parse!(self, self.token(Token::Let)) {
-            Ok(_) => ast::Statement::Declaration(self.decl()?),
-            Err(_) => ast::Statement::Expression(self.expr()?),
-        })
+        if self.lexer.eat(Token::Let) {
+            Ok(ast::Statement::Declaration(self.decl()?))
+        } else {
+            Ok(ast::Statement::Expression(self.expr()?))
+        }
     }
 
     pub fn parse(&mut self) -> Result<ast::Ast<'a>> {
         let mut statements = Vec::new();
-        while let Err(_) = try_parse!(self, self.token(Token::Eof)) {
+        while !self.lexer.eat(Token::Eof) {
             statements.push(self.statement()?);
-            self.token(Token::Semicolon)?;
+            self.expect(Token::Semicolon)?;
         }
         Ok(ast::Ast { statements })
     }

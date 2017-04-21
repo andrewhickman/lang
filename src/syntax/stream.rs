@@ -1,6 +1,67 @@
-/// Similar to iterator but with the end condition contained within Item.
 pub trait Stream {
-    type Item;
+    type Item: Copy + PartialEq;
 
     fn next(&mut self) -> Self::Item;
 }
+
+/// An iterator with one-token lookahead.
+pub trait Peekable {
+    type Item: Copy + PartialEq;
+
+    fn peek(&self) -> Self::Item;
+    fn bump(&mut self);
+
+    fn eat(&mut self, item: Self::Item) -> bool {
+        if self.peek() == item {
+            self.bump();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn eat_while<F: FnMut(Self::Item) -> bool>(&mut self, mut pred: F) -> usize {
+        let mut count = 0;
+        while pred(self.peek()) {
+            self.bump();
+            count += 1;
+        }
+        count
+    }
+}
+
+impl<P: Peekable> Stream for P {
+    type Item = P::Item;
+
+    fn next(&mut self) -> Self::Item {
+        let item = self.peek();
+        self.bump();
+        item
+    }
+}
+
+/*
+struct PeekStream<S: Stream> {
+    stream: S,
+    peeked: S::Item,
+}
+
+impl<S: Stream> PeekStream<S> {
+    fn new(mut stream: S) -> Self {
+        let peeked = stream.next();
+        PeekStream { stream, peeked }
+    }
+}
+
+impl<S: Stream> Peekable for PeekStream<S> {
+    type Item = S::Item;
+
+    fn peek(&self) -> Self::Item {
+        self.peeked
+    }
+
+    fn bump(&mut self) {
+        self.peeked = self.stream.next();
+    }
+}
+*/

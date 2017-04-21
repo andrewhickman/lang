@@ -1,7 +1,7 @@
 mod peek;
 
 use self::peek::PeekChars;
-use super::{Stream, Token};
+use super::{Peekable, Stream, Token};
 
 // An iterator over tokens of data.
 pub struct Lexer<'a> {
@@ -17,32 +17,18 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn bump(&mut self) {
-        self.chars.next();
-    }
-
     // Take an index returned by chars.index() and return the span from it to the current position.
     fn index_data(&self, start: usize) -> &'a str {
         &self.data[start..self.chars.index()]
     }
 
-    // Remove all characters satisfying pref from the stream.
+    // Remove all characters satisfying pred from the stream.
     fn eat_while<F: Fn(char) -> bool>(&mut self, pred: F) {
-        while let Some(ch) = self.chars.peek() {
-            if !pred(ch) {
-                break
-            }
-            self.bump();
-        }
+        self.chars.eat_while(|ch| ch.map(&pred).unwrap_or(false));
     }
 
     fn eat_char(&mut self, ch: char) -> bool {
-        if self.chars.peek() == Some(ch) {
-            self.bump();
-            true
-        } else {
-            false
-        }
+        self.chars.eat(Some(ch))
     }
 }
 

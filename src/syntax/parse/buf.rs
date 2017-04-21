@@ -1,13 +1,11 @@
 use std::collections::VecDeque;
 
-use super::Stream;
+use super::{Peekable, Stream};
 
 /// An stream with limited back-tracking capabilities. Note that save(), commit() and restore()
 /// should be called in pairs in FILO order.
 pub struct StreamBuf<I: Stream> where I::Item: Copy {
     stream: I,
-    // Instead of storing an Option<Item>, we only store Some(_) items and fuse the iterator after
-    // receiving a None.
     buf: VecDeque<I::Item>,
     // The index of the current item, relative to buf.
     index: usize,
@@ -18,14 +16,11 @@ pub struct StreamBuf<I: Stream> where I::Item: Copy {
 #[must_use]
 pub struct Save(usize);
 
-impl<S: Stream> StreamBuf<S> where S::Item: Copy {
-    pub fn new(stream: S) -> Self {
-        StreamBuf {
-            stream: stream,
-            buf: VecDeque::new(),
-            index: 0,
-            save_count: 0,
-        }
+impl<S: Stream> StreamBuf<S> {
+    pub fn new(mut stream: S) -> Self {
+        let mut buf = VecDeque::new();
+        buf.push_back(stream.next());
+        StreamBuf { stream, buf, index: 0, save_count: 0 }
     }
     
     // Adds a new save-point.
@@ -34,7 +29,7 @@ impl<S: Stream> StreamBuf<S> where S::Item: Copy {
         Save(self.index)
     }
     
-    // Backtrack the iterator to the last save-point.
+    // Backtrack the stream to the last save-point.
     pub fn restore(&mut self, Save(index): Save) {
         self.save_count -= 1;
         self.index = index;
@@ -53,32 +48,30 @@ impl<S: Stream> StreamBuf<S> where S::Item: Copy {
 
     #[cfg(test)]
     fn assert_invariant(&self) {
+        assert!(self.index < self.buf.len());
         assert!(self.save_count != 0 || self.index == 0);
     }
 }
 
-impl<S: Stream> Stream for StreamBuf<S> where S::Item: Copy {
+impl<S: Stream> Peekable for StreamBuf<S> {
     type Item = S::Item;
+
+    fn peek(&self) -> Self::Item {
+        self.buf[self.index]
+    }
     
-    fn next(&mut self) -> Self::Item {
+    fn bump(&mut self) {
+        self.index += 1;
         if self.index != self.buf.len() {
             debug_assert!(self.index < self.buf.len());
             if self.save_count == 0 {
                 // buf.len() cannot be 0 because it is greater than index.
-                self.buf.pop_front().unwrap()
-            } else {
-                let item = self.buf[self.index];
-                self.index += 1;
-                item
+                self.index -= 1;
+                self.buf.pop_front().unwrap();
             }
         } else {
-            let item = self.stream.next();
             // Only push to the buffer if we have active save-points.
-            if self.save_count != 0 {
-                self.buf.push_back(item);
-                self.index += 1;
-            }
-            item
+            self.buf.push_back(self.stream.next());
         }
     }
 }
