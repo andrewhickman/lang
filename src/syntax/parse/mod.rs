@@ -1,39 +1,25 @@
-mod buf;
 mod error;
 
 use std::result;
 
 use ast;
-use self::error::err;
-use super::{Peekable, lex, Stream, Token};
+use self::error::{err, Error};
+use super::{Peekable, PeekStream, lex, Stream, Token};
 
-pub type Result<T> = result::Result<T, error::Error>;
-
-macro_rules! try_parse {
-    ( $this:ident . $func:ident ) => {
-        try_parse!($this, $this.$func())
-    };
-    ( $this:ident , $expr:expr) => {{
-        let save = $this.lexer.save();
-        match $expr {
-            Ok(v) => { $this.lexer.commit(save); Ok(v) }
-            Err(e) => { $this.lexer.restore(save); Err(e) }
-        }}
-    }
-}
+pub type Result<'a, T> = result::Result<T, Error<'a>>;
 
 pub struct Parser<'a> {
-    lexer: buf::StreamBuf<lex::Lexer<'a>>,
+    lexer: PeekStream<lex::Lexer<'a>>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(data: &'a str) -> Self {
         Parser {
-            lexer: buf::StreamBuf::new(lex::Lexer::new(data)),
+            lexer: PeekStream::new(lex::Lexer::new(data)),
         }
     }
 
-    fn expect(&mut self, tok: Token<'a>) -> Result<()> {
+    fn expect(&mut self, tok: Token<'a>) -> Result<'a, ()> {
         if self.lexer.eat(tok) {
             Ok(())
         } else {
@@ -41,7 +27,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn term(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn term(&mut self) -> Result<'a, ast::Expr<'a>> {
         match self.lexer.next() {
             Token::Ident(ident) => Ok(ast::Expr::Term(ast::Term::Ident(ident))),
             Token::Num(num) => Ok(ast::Expr::Term(ast::Term::Literal(num))),
@@ -55,191 +41,198 @@ impl<'a> Parser<'a> {
     }
 
     // postfix unary operators
-    pub fn expr1(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr1(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut arg = self.term()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::PlusPlus => Ok(ast::UnaryOp::PostIncr),
-            Token::MinusMinus => Ok(ast::UnaryOp::PostDecr),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::PlusPlus => ast::UnaryOp::PostIncr,
+                Token::MinusMinus => ast::UnaryOp::PostDecr,
+                _ => return Ok(arg),
+            };
+            self.lexer.bump();
             arg = ast::Expr::Unary { op, arg: Box::new(arg) };
         }
-        Ok(arg)
     }
 
     // prefix unary operators.
-    pub fn expr2(&mut self) -> Result<ast::Expr<'a>> {
-        if let Ok(term) = try_parse!(self.expr1) {
-            return Ok(term);
-        }
-        let op = match self.lexer.next() {
+    pub fn expr2(&mut self) -> Result<'a, ast::Expr<'a>> {
+        let op = match self.lexer.peek() {
             Token::Not => ast::UnaryOp::Not,
             Token::Plus => ast::UnaryOp::Plus,
             Token::Minus => ast::UnaryOp::Minus,
             Token::PlusPlus => ast::UnaryOp::PreIncr,
             Token::MinusMinus => ast::UnaryOp::PreDecr,
-            tok => return err("operator", tok),
+            _ => return self.expr1().map_err(|e| e.exp("operator, identifier or literal")),
         };
+        self.lexer.bump();
         Ok(ast::Expr::Unary { op, arg: Box::new(self.expr2()?) })
     }
 
     // *, /, % operators. Left associative.
-    pub fn expr3(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr3(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr2()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Star => Ok(ast::BinaryOp::Mul),
-            Token::Slash => Ok(ast::BinaryOp::Div),
-            Token::Percent => Ok(ast::BinaryOp::Rem),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Star => ast::BinaryOp::Mul,
+                Token::Slash => ast::BinaryOp::Div,
+                Token::Percent => ast::BinaryOp::Rem,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr2()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // +, - operators. Left associative.
-    pub fn expr4(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr4(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr3()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Plus => Ok(ast::BinaryOp::Add),
-            Token::Minus => Ok(ast::BinaryOp::Sub),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Plus => ast::BinaryOp::Add,
+                Token::Minus => ast::BinaryOp::Sub,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr3()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // <<, >> operators. Left associative.
-    pub fn expr5(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr5(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr4()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Shr => Ok(ast::BinaryOp::Shr),
-            Token::Shl => Ok(ast::BinaryOp::Shl),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Shr => ast::BinaryOp::Shr,
+                Token::Shl => ast::BinaryOp::Shl,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr4()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // <, <=, >, >= operators. Left associative.
-    pub fn expr6(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr6(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr5()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Lt => Ok(ast::BinaryOp::Lt),
-            Token::Le => Ok(ast::BinaryOp::Le),
-            Token::Gt => Ok(ast::BinaryOp::Gt),
-            Token::Ge => Ok(ast::BinaryOp::Ge),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Lt => ast::BinaryOp::Lt,
+                Token::Le => ast::BinaryOp::Le,
+                Token::Gt => ast::BinaryOp::Gt,
+                Token::Ge => ast::BinaryOp::Ge,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr5()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // ==, != operators. Left associative.
-    pub fn expr7(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr7(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr6()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::EqEq => Ok(ast::BinaryOp::Eq),
-            Token::Neq => Ok(ast::BinaryOp::Neq),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::EqEq => ast::BinaryOp::Eq,
+                Token::Neq => ast::BinaryOp::Neq,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr6()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // & operator. Left associative.
-    pub fn expr8(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr8(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr7()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::And => Ok(ast::BinaryOp::BitAnd),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::And => ast::BinaryOp::BitAnd,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr7()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // ^ operator. Left associative.
-    pub fn expr9(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr9(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr8()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Caret => Ok(ast::BinaryOp::BitXor),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Caret => ast::BinaryOp::BitXor,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr8()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // | operator. Left associative.
-    pub fn expr10(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr10(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr9()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::Or => Ok(ast::BinaryOp::BitOr),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::Or => ast::BinaryOp::BitOr,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr9()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // && operator. Left associative.
-    pub fn expr11(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr11(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr10()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::AndAnd => Ok(ast::BinaryOp::And),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::AndAnd => ast::BinaryOp::And,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr10()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
     
     // || operator. Left associative.
-    pub fn expr12(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr12(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut left = self.expr11()?;
-        while let Ok(op) = try_parse!(self, match self.lexer.next() {
-            Token::OrOr => Ok(ast::BinaryOp::Or),
-            _ => Err(()),
-        }) {
+        loop {
+            let op = match self.lexer.peek() {
+                Token::OrOr => ast::BinaryOp::Or,
+                _ => return Ok(left),
+            };
+            self.lexer.bump();
             let right = self.expr11()?;
             left = ast::Expr::Binary { op, args: Box::new((left, right)) };
         }
-        Ok(left)
     }
 
     // = operator. Right associative.
-    pub fn expr13(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr13(&mut self) -> Result<'a, ast::Expr<'a>> {
         let left = self.expr12()?;
-        let op = match try_parse!(self, match self.lexer.next() {
-            Token::Eq => Ok(ast::BinaryOp::Assign),
-            _ => Err(()),
-        }) {
-            Ok(op) => op,
-            Err(_) => return Ok(left),
+        let op = match self.lexer.peek() {
+            Token::Eq => ast::BinaryOp::Assign,
+            _ => return Ok(left),
         };
+        self.lexer.bump();
         let right = self.expr13()?;
         Ok(ast::Expr::Binary { op, args: Box::new((left, right)) })
     }
 
-    pub fn expr(&mut self) -> Result<ast::Expr<'a>> {
+    pub fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
         self.expr13()
     }
 
-    pub fn decl(&mut self) -> Result<ast::Decl<'a>> {
+    pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
         //self.token(Token::Let)?;
         let name = match self.lexer.next() {
             Token::Ident(name) => name,
@@ -253,7 +246,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Decl { name, expr })
     }
 
-    pub fn statement(&mut self) -> Result<ast::Statement<'a>> {
+    pub fn statement(&mut self) -> Result<'a, ast::Statement<'a>> {
         // dodgy hack
         if self.lexer.eat(Token::Let) {
             Ok(ast::Statement::Declaration(self.decl()?))
@@ -262,7 +255,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<ast::Ast<'a>> {
+    pub fn parse(&mut self) -> Result<'a, ast::Ast<'a>> {
         let mut statements = Vec::new();
         while !self.lexer.eat(Token::Eof) {
             statements.push(self.statement()?);
@@ -333,11 +326,10 @@ fn bench_decl(b: &mut ::test::Bencher) {
 fn bench_lex(b: &mut ::test::Bencher) {
     let mut data = String::new();
     for _ in 0..100 {
-        data.push_str("x;");
+        data.push_str("let x;");
     }
     b.iter(|| {
-        let mut lexer = buf::StreamBuf::new(lex::Lexer::new(&data));
-        let _save = lexer.save();
+        let mut lexer = PeekStream::new(lex::Lexer::new(&data));
         while lexer.next() != Token::Eof {}
     })
 }

@@ -40,14 +40,13 @@ impl<P: Peekable> Stream for P {
     }
 }
 
-/*
-struct PeekStream<S: Stream> {
+pub struct PeekStream<S: Stream> {
     stream: S,
     peeked: S::Item,
 }
 
 impl<S: Stream> PeekStream<S> {
-    fn new(mut stream: S) -> Self {
+    pub fn new(mut stream: S) -> Self {
         let peeked = stream.next();
         PeekStream { stream, peeked }
     }
@@ -64,4 +63,3 @@ impl<S: Stream> Peekable for PeekStream<S> {
         self.peeked = self.stream.next();
     }
 }
-*/
