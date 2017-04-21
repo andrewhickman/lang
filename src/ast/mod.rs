@@ -47,7 +47,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum BinaryOp {
     // Listed in order of precedence.
     Mul, Div, Rem,

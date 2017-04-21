@@ -12,6 +12,18 @@ pub struct Parser<'a> {
     lexer: PeekStream<lex::Lexer<'a>>,
 }
 
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum Associativity {
+    Left, Right
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BinaryOp {
+    op: ast::BinaryOp,
+    lvl: u8,
+    assoc: Associativity,
+}
+
 impl<'a> Parser<'a> {
     pub fn new(data: &'a str) -> Self {
         Parser {
@@ -40,6 +52,33 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn peek_op(&mut self) -> Result<'a, BinaryOp> {
+        use self::Associativity::{Left, Right};
+        use ast::BinaryOp::*;
+        Ok(match self.lexer.peek() {
+            Token::Star => BinaryOp { op: Mul, lvl: 10, assoc: Left },
+            Token::Slash => BinaryOp { op: Div, lvl: 10, assoc: Left },
+            Token::Percent => BinaryOp { op: Rem, lvl: 10, assoc: Left },
+            Token::Plus => BinaryOp { op: Add, lvl: 9, assoc: Left },
+            Token::Minus => BinaryOp { op: Sub, lvl: 9, assoc: Left },
+            Token::Shr => BinaryOp { op: Shr, lvl: 8, assoc: Left },
+            Token::Shl => BinaryOp { op: Shl, lvl: 8, assoc: Left },
+            Token::Lt => BinaryOp { op: Lt, lvl: 7, assoc: Left },
+            Token::Le => BinaryOp { op: Le, lvl: 7, assoc: Left },
+            Token::Gt => BinaryOp { op: Gt, lvl: 7, assoc: Left },
+            Token::Ge => BinaryOp { op: Ge, lvl: 7, assoc: Left },
+            Token::EqEq => BinaryOp { op: Eq, lvl: 6, assoc: Left },
+            Token::NotEq => BinaryOp { op: Neq, lvl: 6, assoc: Left },
+            Token::And => BinaryOp { op: BitAnd, lvl: 5, assoc: Left },
+            Token::Caret => BinaryOp { op: BitXor, lvl: 4, assoc: Left },
+            Token::Or => BinaryOp { op: BitOr, lvl: 3, assoc: Left },
+            Token::AndAnd => BinaryOp { op: And, lvl: 2, assoc: Left },
+            Token::OrOr => BinaryOp { op: Or, lvl: 1, assoc: Left },
+            Token::Eq => BinaryOp { op: Assign, lvl: 0, assoc: Right },
+            tok => return err("operator", tok),
+        })
+    }
+
     // postfix unary operators
     pub fn expr1(&mut self) -> Result<'a, ast::Expr<'a>> {
         let mut arg = self.term()?;
@@ -62,174 +101,41 @@ impl<'a> Parser<'a> {
             Token::Minus => ast::UnaryOp::Minus,
             Token::PlusPlus => ast::UnaryOp::PreIncr,
             Token::MinusMinus => ast::UnaryOp::PreDecr,
-            _ => return self.expr1().map_err(|e| e.exp("operator, identifier or literal")),
+            _ => return self.expr1().map_err(|e| e.exp("prefix operator, identifier or literal")),
         };
         self.lexer.bump();
         Ok(ast::Expr::Unary { op, arg: Box::new(self.expr2()?) })
     }
 
-    // *, /, % operators. Left associative.
-    pub fn expr3(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr2()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Star => ast::BinaryOp::Mul,
-                Token::Slash => ast::BinaryOp::Div,
-                Token::Percent => ast::BinaryOp::Rem,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr2()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
+    pub fn expr_lvl(&mut self, mut lhs: ast::Expr<'a>, lvl: u8) -> Result<'a, ast::Expr<'a>> {
+        let mut peek = self.peek_op();
+        while let Ok(op) = peek {
+            if lvl <= op.lvl {
+                let op = peek.unwrap();
+                self.lexer.bump();
+                let mut rhs = self.expr2()?;
+                peek = self.peek_op();
+                while let Ok(next_op) = peek {
+                    if op.lvl < next_op.lvl || (op.lvl == next_op.lvl 
+                                                && next_op.assoc == Associativity::Right)
+                    {
+                        rhs = self.expr_lvl(rhs, peek.unwrap().lvl)?;
+                        peek = self.peek_op();
+                    } else {
+                        break;
+                    }
+                }
+                lhs = ast::Expr::Binary { op: op.op, args: Box::new((lhs, rhs)) };
+            } else {
+                break;
+            }
         }
-    }
-    
-    // +, - operators. Left associative.
-    pub fn expr4(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr3()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Plus => ast::BinaryOp::Add,
-                Token::Minus => ast::BinaryOp::Sub,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr3()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // <<, >> operators. Left associative.
-    pub fn expr5(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr4()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Shr => ast::BinaryOp::Shr,
-                Token::Shl => ast::BinaryOp::Shl,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr4()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // <, <=, >, >= operators. Left associative.
-    pub fn expr6(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr5()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Lt => ast::BinaryOp::Lt,
-                Token::Le => ast::BinaryOp::Le,
-                Token::Gt => ast::BinaryOp::Gt,
-                Token::Ge => ast::BinaryOp::Ge,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr5()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // ==, != operators. Left associative.
-    pub fn expr7(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr6()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::EqEq => ast::BinaryOp::Eq,
-                Token::Neq => ast::BinaryOp::Neq,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr6()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // & operator. Left associative.
-    pub fn expr8(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr7()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::And => ast::BinaryOp::BitAnd,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr7()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // ^ operator. Left associative.
-    pub fn expr9(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr8()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Caret => ast::BinaryOp::BitXor,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr8()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // | operator. Left associative.
-    pub fn expr10(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr9()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::Or => ast::BinaryOp::BitOr,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr9()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // && operator. Left associative.
-    pub fn expr11(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr10()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::AndAnd => ast::BinaryOp::And,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr10()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-    
-    // || operator. Left associative.
-    pub fn expr12(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let mut left = self.expr11()?;
-        loop {
-            let op = match self.lexer.peek() {
-                Token::OrOr => ast::BinaryOp::Or,
-                _ => return Ok(left),
-            };
-            self.lexer.bump();
-            let right = self.expr11()?;
-            left = ast::Expr::Binary { op, args: Box::new((left, right)) };
-        }
-    }
-
-    // = operator. Right associative.
-    pub fn expr13(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let left = self.expr12()?;
-        let op = match self.lexer.peek() {
-            Token::Eq => ast::BinaryOp::Assign,
-            _ => return Ok(left),
-        };
-        self.lexer.bump();
-        let right = self.expr13()?;
-        Ok(ast::Expr::Binary { op, args: Box::new((left, right)) })
+        Ok(lhs)
     }
 
     pub fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
-        self.expr13()
+        let lhs = self.expr2()?;
+        self.expr_lvl(lhs, 0)
     }
 
     pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {

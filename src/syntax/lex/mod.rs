@@ -64,7 +64,7 @@ impl<'a> Stream for Lexer<'a> {
             '|' => if self.eat_char('|') { OrOr } else { Or },
             '<' => if self.eat_char('=') { Le } else if self.eat_char('<') { Shl } else { Lt },
             '>' => if self.eat_char('=') { Ge } else if self.eat_char('>') { Shr } else { Gt },
-            '!' => if self.eat_char('=') { Neq } else { Not },
+            '!' => if self.eat_char('=') { NotEq } else { Not },
             '^' => Caret,
             '*' => Star,
             '/' => Slash,
