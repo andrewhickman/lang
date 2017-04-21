@@ -56,25 +56,25 @@ impl<'a> Parser<'a> {
         use self::Associativity::{Left, Right};
         use ast::BinaryOp::*;
         Ok(match self.lexer.peek() {
-            Token::Star => BinaryOp { op: Mul, lvl: 10, assoc: Left },
-            Token::Slash => BinaryOp { op: Div, lvl: 10, assoc: Left },
-            Token::Percent => BinaryOp { op: Rem, lvl: 10, assoc: Left },
-            Token::Plus => BinaryOp { op: Add, lvl: 9, assoc: Left },
-            Token::Minus => BinaryOp { op: Sub, lvl: 9, assoc: Left },
-            Token::Shr => BinaryOp { op: Shr, lvl: 8, assoc: Left },
-            Token::Shl => BinaryOp { op: Shl, lvl: 8, assoc: Left },
-            Token::Lt => BinaryOp { op: Lt, lvl: 7, assoc: Left },
-            Token::Le => BinaryOp { op: Le, lvl: 7, assoc: Left },
-            Token::Gt => BinaryOp { op: Gt, lvl: 7, assoc: Left },
-            Token::Ge => BinaryOp { op: Ge, lvl: 7, assoc: Left },
-            Token::EqEq => BinaryOp { op: Eq, lvl: 6, assoc: Left },
-            Token::NotEq => BinaryOp { op: Neq, lvl: 6, assoc: Left },
-            Token::And => BinaryOp { op: BitAnd, lvl: 5, assoc: Left },
-            Token::Caret => BinaryOp { op: BitXor, lvl: 4, assoc: Left },
-            Token::Or => BinaryOp { op: BitOr, lvl: 3, assoc: Left },
-            Token::AndAnd => BinaryOp { op: And, lvl: 2, assoc: Left },
-            Token::OrOr => BinaryOp { op: Or, lvl: 1, assoc: Left },
-            Token::Eq => BinaryOp { op: Assign, lvl: 0, assoc: Right },
+            Token::Star => BinaryOp { op: Mul, lvl: 11, assoc: Left },
+            Token::Slash => BinaryOp { op: Div, lvl: 11, assoc: Left },
+            Token::Percent => BinaryOp { op: Rem, lvl: 11, assoc: Left },
+            Token::Plus => BinaryOp { op: Add, lvl: 10, assoc: Left },
+            Token::Minus => BinaryOp { op: Sub, lvl: 10, assoc: Left },
+            Token::Shr => BinaryOp { op: Shr, lvl: 9, assoc: Left },
+            Token::Shl => BinaryOp { op: Shl, lvl: 9, assoc: Left },
+            Token::Lt => BinaryOp { op: Lt, lvl: 8, assoc: Left },
+            Token::Le => BinaryOp { op: Le, lvl: 8, assoc: Left },
+            Token::Gt => BinaryOp { op: Gt, lvl: 8, assoc: Left },
+            Token::Ge => BinaryOp { op: Ge, lvl: 8, assoc: Left },
+            Token::EqEq => BinaryOp { op: Eq, lvl: 7, assoc: Left },
+            Token::NotEq => BinaryOp { op: Neq, lvl: 7, assoc: Left },
+            Token::And => BinaryOp { op: BitAnd, lvl: 6, assoc: Left },
+            Token::Caret => BinaryOp { op: BitXor, lvl: 5, assoc: Left },
+            Token::Or => BinaryOp { op: BitOr, lvl: 4, assoc: Left },
+            Token::AndAnd => BinaryOp { op: And, lvl: 3, assoc: Left },
+            Token::OrOr => BinaryOp { op: Or, lvl: 2, assoc: Left },
+            Token::Eq => BinaryOp { op: Assign, lvl: 1, assoc: Right },
             tok => return err("operator", tok),
         })
     }
@@ -107,25 +107,16 @@ impl<'a> Parser<'a> {
         Ok(ast::Expr::Unary { op, arg: Box::new(self.expr2()?) })
     }
 
-    pub fn expr_lvl(&mut self, mut lhs: ast::Expr<'a>, lvl: u8) -> Result<'a, ast::Expr<'a>> {
-        let mut peek = self.peek_op();
-        while let Ok(op) = peek {
-            if lvl <= op.lvl {
-                let op = peek.unwrap();
+    pub fn expr_lvl(&mut self, min_lvl: u8) -> Result<'a, ast::Expr<'a>> {
+        let mut lhs = self.expr2()?; 
+        while let Ok(BinaryOp { op, lvl, assoc }) = self.peek_op() {
+            if min_lvl < lvl {
                 self.lexer.bump();
-                let mut rhs = self.expr2()?;
-                peek = self.peek_op();
-                while let Ok(next_op) = peek {
-                    if op.lvl < next_op.lvl || (op.lvl == next_op.lvl 
-                                                && next_op.assoc == Associativity::Right)
-                    {
-                        rhs = self.expr_lvl(rhs, peek.unwrap().lvl)?;
-                        peek = self.peek_op();
-                    } else {
-                        break;
-                    }
-                }
-                lhs = ast::Expr::Binary { op: op.op, args: Box::new((lhs, rhs)) };
+                let rhs = match assoc {
+                    Associativity::Left => self.expr_lvl(lvl),
+                    Associativity::Right => self.expr_lvl(lvl - 1),
+                }?;
+                lhs = ast::Expr::Binary { op, args: Box::new((lhs, rhs)) }
             } else {
                 break;
             }
@@ -134,8 +125,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
-        let lhs = self.expr2()?;
-        self.expr_lvl(lhs, 0)
+        self.expr_lvl(0)
     }
 
     pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
