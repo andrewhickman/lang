@@ -15,10 +15,6 @@ impl<'a> Error<'a> {
             message: format!("expected {}, found token {}", expected, found), found
         }
     }
-
-    pub fn exp<E: fmt::Display>(self, expected: E) -> Self {
-        Error::new(expected, self.found)
-    }
 }
 
 pub fn err<'a, E: fmt::Display, T>(expected: E, found: Token<'a>) -> Result<T, Error<'a>> {
