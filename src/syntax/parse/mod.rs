@@ -39,9 +39,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    // prefix unary operators.
     pub fn unary_expr(&mut self) -> Result<'a, ast::Expr<'a>> {
-        #[derive(Debug)]
         enum OpOrTerm<'b> { Op(ast::UnaryOp), Term(ast::Term<'b>) }
 
         let next = match self.lexer.next() {
