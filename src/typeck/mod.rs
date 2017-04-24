@@ -1,3 +1,5 @@
+mod ops;
+
 use std::collections::HashMap;
 
 use ast;
@@ -16,6 +18,10 @@ pub struct TyChecker<'b, 'a: 'b> {
 }
 
 impl<'b, 'a: 'b> TyChecker<'b, 'a> {
+    pub fn new() -> Self {
+        TyChecker { symbols: Vec::new() }
+    }
+
     pub fn ast(&mut self, ast: &'b mut ast::Ast<'a>) -> Result<(), String> {
         self.scope(&mut ast.main)
     }
@@ -46,11 +52,28 @@ impl<'b, 'a: 'b> TyChecker<'b, 'a> {
                 },
             }
         }
+        self.symbols.pop();
         Ok(())
     }
 
     fn expr(&mut self, expr: &ast::Expr<'a>) -> Result<Ty, String> {
-        unimplemented!()
+        use ast::Expr::*;
+        use ast::Term::*;
+        match *expr {
+            Term(Literal(_)) => Ok(Ty::Int),
+            Term(Ident(ident)) => self.lookup(ident),
+            Binary { op, ref args } => ops::ty_of(op, self.expr(&args.0)?, self.expr(&args.1)?),
+            Unary { ref arg, .. } => self.expr(&**arg),
+        }
+    }
+    
+    fn lookup(&self, key: &'a str) -> Result<Ty, String> {
+        for scope in self.symbols.iter().rev() {
+            if let Some(ty) = scope.get(key) {
+                return Ok(*ty);
+            }
+        }
+        Err(format!("variable not found: {}", key))
     }
 }
 

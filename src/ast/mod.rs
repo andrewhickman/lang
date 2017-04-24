@@ -46,7 +46,7 @@ pub struct Decl<'a> {
     pub expr: Option<Expr<'a>>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum UnaryOp {
     Plus,
     Minus,
@@ -70,5 +70,6 @@ pub enum BinaryOp {
     BitOr,
     And,
     Or,
-    Assign,
+    Assign, AssignMul, AssignDiv, AssignRem, AssignAdd, AssignSub, AssignShr, AssignShl, 
+    AssignBitAnd, AssignBitXor, AssignBitOr,
 }

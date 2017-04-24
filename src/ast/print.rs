@@ -104,6 +104,16 @@ impl Display for BinaryOp {
             BinaryOp::And => write!(f, "&&"),
             BinaryOp::Or => write!(f, "||"),
             BinaryOp::Assign => write!(f, "="),
+            BinaryOp::AssignMul => write!(f, "*="),
+            BinaryOp::AssignDiv => write!(f, "/="), 
+            BinaryOp::AssignRem => write!(f, "%="), 
+            BinaryOp::AssignAdd => write!(f, "+="), 
+            BinaryOp::AssignSub => write!(f, "-="), 
+            BinaryOp::AssignShr => write!(f, ">>="), 
+            BinaryOp::AssignShl => write!(f, "<<="), 
+            BinaryOp::AssignBitAnd => write!(f, "&="), 
+            BinaryOp::AssignBitXor => write!(f, "^="), 
+            BinaryOp::AssignBitOr => write!(f, "|="),
         }
     }
 }

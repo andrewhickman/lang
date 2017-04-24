@@ -50,6 +50,9 @@ impl<'a> Stream for Lexer<'a> {
                 self.eat_while(char::is_alphabetic);
                 match self.index_data(start) {
                     "let" => Let,
+                    "Bool" => Bool,
+                    "Int" => Int,
+                    "Byte" => Byte,
                     ident => Ident(ident),
                 }
             },
@@ -57,22 +60,30 @@ impl<'a> Stream for Lexer<'a> {
                 self.eat_while(char::is_numeric);
                 Num(self.index_data(start).parse().unwrap())
             }
-            '+' => if self.eat_char('+') { PlusPlus } else { Plus },
-            '-' => if self.eat_char('-') { MinusMinus } else { Minus },
+            '+' => if self.eat_char('=') { PlusEq } else if self.eat_char('+') { PlusPlus } else { Plus },
+            '-' => if self.eat_char('=') { MinusEq } else if self.eat_char('-') { MinusMinus } else { Minus },
+            '&' => if self.eat_char('=') { AndEq } else if self.eat_char('&') { AndAnd } else { And },
+            '|' => if self.eat_char('=') { OrEq } else if self.eat_char('|') { OrOr } else { Or },
+            '^' => if self.eat_char('=') { CaretEq } else { Caret },
+            '*' => if self.eat_char('=') { StarEq } else { Star },
+            '/' => if self.eat_char('/') { SlashEq } else { Slash },
+            '%' => if self.eat_char('%') { PercentEq } else { Percent },
             '=' => if self.eat_char('=') { EqEq } else { Eq },
-            '&' => if self.eat_char('&') { AndAnd } else { And },
-            '|' => if self.eat_char('|') { OrOr } else { Or },
-            '<' => if self.eat_char('=') { Le } else if self.eat_char('<') { Shl } else { Lt },
-            '>' => if self.eat_char('=') { Ge } else if self.eat_char('>') { Shr } else { Gt },
             '!' => if self.eat_char('=') { NotEq } else { Not },
-            '^' => Caret,
-            '*' => Star,
-            '/' => Slash,
-            '%' => Percent,
             '(' => OpenParen,
             ')' => CloseParen,
             '{' => OpenBrace,
             '}' => CloseBrace,
+            '<' => if self.eat_char('=') { Le } else if self.eat_char('<') { 
+                if self.eat_char('=') { ShlEq } else { Shl }
+            } else { 
+                Lt 
+            },
+            '>' => if self.eat_char('=') { Ge } else if self.eat_char('>') { 
+                if self.eat_char('=') { ShrEq } else { Shr }
+            } else { 
+                Gt 
+            },
             ';' => Semicolon,
             ':' => Colon,
             ch => Unexpected(ch),

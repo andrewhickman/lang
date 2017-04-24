@@ -40,7 +40,14 @@ impl<'a> Parser<'a> {
     }
     
     fn ty(&mut self) -> Result<'a, typeck::Ty> {
-        unimplemented!()
+        use typeck::Ty;
+
+        match self.lexer.next() {
+            Token::Byte => Ok(Ty::Byte),
+            Token::Bool => Ok(Ty::Bool),
+            Token::Int => Ok(Ty::Int),
+            tok => err("type", tok),
+        }
     }
     
     pub fn postfix_expr(&mut self, term: ast::Term<'a>) -> Result<'a, ast::Expr<'a>> {
@@ -120,6 +127,16 @@ impl<'a> Parser<'a> {
             Token::AndAnd => BinaryOp { op: And, lvl: 3, assoc: Left },
             Token::OrOr => BinaryOp { op: Or, lvl: 2, assoc: Left },
             Token::Eq => BinaryOp { op: Assign, lvl: 1, assoc: Right },
+            Token::StarEq => BinaryOp { op: AssignMul, lvl: 1, assoc: Right },
+            Token::SlashEq => BinaryOp { op: AssignDiv, lvl: 1, assoc: Right },
+            Token::PercentEq => BinaryOp { op: AssignRem, lvl: 1, assoc: Right },
+            Token::PlusEq => BinaryOp { op: AssignAdd, lvl: 1, assoc: Right },
+            Token::MinusEq => BinaryOp { op: AssignSub, lvl: 1, assoc: Right },
+            Token::ShrEq => BinaryOp { op: AssignShr, lvl: 1, assoc: Right },
+            Token::ShlEq => BinaryOp { op: AssignShl, lvl: 1, assoc: Right },
+            Token::AndEq => BinaryOp { op: AssignBitAnd, lvl: 1, assoc: Right },
+            Token::CaretEq => BinaryOp { op: AssignBitXor, lvl: 1, assoc: Right },
+            Token::OrEq => BinaryOp { op: AssignBitOr, lvl: 1, assoc: Right },
             tok => return err("operator", tok),
         })
     }
