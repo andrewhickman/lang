@@ -1,7 +1,15 @@
 mod print;
 
+use typeck;
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct Ast<'a> {
+    pub main: Scope<'a>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Scope<'a> {
+    pub symbols: typeck::SymbolTable<'a>,
     pub statements: Vec<Statement<'a>>,
 }
 
@@ -15,6 +23,7 @@ pub enum Term<'a> {
 pub enum Statement<'a> {
     Expression(Expr<'a>),
     Declaration(Decl<'a>),
+    Scope(Scope<'a>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -33,6 +42,7 @@ pub enum Expr<'a> {
 #[derive(Debug, Eq, PartialEq)]
 pub struct Decl<'a> {
     pub name: &'a str,
+    pub ty: typeck::Ty,
     pub expr: Option<Expr<'a>>,
 }
 
@@ -52,7 +62,7 @@ pub enum BinaryOp {
     // Listed in order of precedence.
     Mul, Div, Rem,
     Add, Sub,
-    Shl, Shr,
+    Shr, Shl,
     Gt, Ge, Lt, Le,
     Eq, Neq,
     BitAnd,

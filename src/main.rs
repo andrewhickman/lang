@@ -3,6 +3,7 @@ extern crate test;
 
 mod ast;
 mod syntax;
+mod typeck;
 
 use std::env::args;
 

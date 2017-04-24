@@ -71,7 +71,10 @@ impl<'a> Stream for Lexer<'a> {
             '%' => Percent,
             '(' => OpenParen,
             ')' => CloseParen,
+            '{' => OpenBrace,
+            '}' => CloseBrace,
             ';' => Semicolon,
+            ':' => Colon,
             ch => Unexpected(ch),
         }
     }

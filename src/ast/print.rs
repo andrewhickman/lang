@@ -4,9 +4,20 @@ use super::*;
 
 impl<'a> Display for Ast<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        for statement in &self.statements {
+        for statement in &self.main.statements {
             writeln!(f, "{}", statement)?;
         }
+        Ok(())
+    }
+}
+
+impl<'a> Display for Scope<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        writeln!(f, "{{")?;
+        for statement in &self.statements {
+            writeln!(f, "    {}", statement)?;
+        }
+        writeln!(f, "}}")?;
         Ok(())
     }
 }
@@ -16,6 +27,7 @@ impl<'a> Display for Statement<'a> {
         match *self {
             Statement::Expression(ref expr) => write!(f, "{};", expr),
             Statement::Declaration(ref decl) => write!(f, "{};", decl),
+            Statement::Scope(ref scope) => write!(f, "{}", scope),
         }
     }
 }
@@ -41,10 +53,11 @@ impl<'a> Display for Expr<'a> {
 
 impl<'a> Display for Decl<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        match self.expr {
-            Some(ref expr) => write!(f, "let {} = {}", self.name, expr),
-            None => write!(f, "let {}", self.name),
+        write!(f, "let {}: {:?}", self.name, self.ty)?;
+        if let Some(ref expr) = self.expr {
+            write!(f, " = {}", expr)?;
         }
+        Ok(())
     }
 }
 

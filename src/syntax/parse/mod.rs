@@ -2,7 +2,7 @@ mod error;
 
 use std::result;
 
-use ast;
+use {ast, typeck};
 use self::error::{err, Error};
 use super::{Peekable, PeekStream, lex, Stream, Token};
 
@@ -38,6 +38,23 @@ impl<'a> Parser<'a> {
             err(tok, self.lexer.peek())
         }
     }
+    
+    fn ty(&mut self) -> Result<'a, typeck::Ty> {
+        unimplemented!()
+    }
+    
+    pub fn postfix_expr(&mut self, term: ast::Term<'a>) -> Result<'a, ast::Expr<'a>> {
+        let mut arg = ast::Expr::Term(term);
+        loop {
+            let op = match self.lexer.peek() {
+                Token::PlusPlus => ast::UnaryOp::PostIncr,
+                Token::MinusMinus => ast::UnaryOp::PostDecr,
+                _ => return Ok(arg),
+            };
+            self.lexer.bump();
+            arg = ast::Expr::Unary { op, arg: Box::new(arg) };
+        }
+    }
 
     pub fn unary_expr(&mut self) -> Result<'a, ast::Expr<'a>> {
         enum OpOrTerm<'b> { Op(ast::UnaryOp), Term(ast::Term<'b>) }
@@ -57,23 +74,10 @@ impl<'a> Parser<'a> {
             },
             tok => return err("prefix operator, identifier or literal", tok),
         };
-        Ok(match next {
-            OpOrTerm::Op(op) => ast::Expr::Unary { op, arg: Box::new(self.unary_expr()?) },
-            OpOrTerm::Term(term) => {
-                // postfix expr
-                let mut arg = ast::Expr::Term(term);
-                loop {
-                    let op = match self.lexer.peek() {
-                        Token::PlusPlus => ast::UnaryOp::PostIncr,
-                        Token::MinusMinus => ast::UnaryOp::PostDecr,
-                        _ => break,
-                    };
-                    self.lexer.bump();
-                    arg = ast::Expr::Unary { op, arg: Box::new(arg) };
-                }
-                arg
-            },
-        })
+        match next {
+            OpOrTerm::Op(op) => Ok(ast::Expr::Unary { op, arg: Box::new(self.unary_expr()?) }),
+            OpOrTerm::Term(term) => self.postfix_expr(term),
+        }
     }
 
     pub fn expr_lvl(&mut self, min_lvl: u8) -> Result<'a, ast::Expr<'a>> {
@@ -125,33 +129,49 @@ impl<'a> Parser<'a> {
     }
 
     pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
+        self.expect(Token::Let)?;
         let name = match self.lexer.next() {
             Token::Ident(name) => name,
             tok => return err("identifier", tok),
         };
+        self.expect(Token::Colon)?;
+        let ty = self.ty()?;
         let expr = if self.lexer.eat(Token::Eq) {
             Some(self.expr()?)
         } else {
             None
         };
-        Ok(ast::Decl { name, expr })
+        Ok(ast::Decl { name, ty, expr })
     }
 
     pub fn statement(&mut self) -> Result<'a, ast::Statement<'a>> {
-        if self.lexer.eat(Token::Let) {
-            Ok(ast::Statement::Declaration(self.decl()?))
-        } else {
-            Ok(ast::Statement::Expression(self.expr()?))
-        }
+        Ok(match self.lexer.peek() {
+            Token::Let => ast::Statement::Declaration(self.decl()?),
+            Token::OpenBrace => ast::Statement::Scope(self.scope()?),
+            _ => ast::Statement::Expression(self.expr()?),
+        })
     }
 
-    pub fn parse(&mut self) -> Result<'a, ast::Ast<'a>> {
+    pub fn scope_body(&mut self) -> Result<'a, ast::Scope<'a>> {
         let mut statements = Vec::new();
-        while !self.lexer.eat(Token::Eof) {
+        while self.lexer.peek() != Token::CloseBrace && self.lexer.peek() != Token::Eof {
             statements.push(self.statement()?);
             self.expect(Token::Semicolon)?;
         }
-        Ok(ast::Ast { statements })
+        Ok(ast::Scope { statements, symbols: typeck::SymbolTable::default() })
+    }
+    
+    pub fn scope(&mut self) -> Result<'a, ast::Scope<'a>> {
+        self.expect(Token::OpenBrace)?;
+        let body = self.scope_body()?;
+        self.expect(Token::CloseBrace)?;
+        Ok(body)
+    }
+
+    pub fn parse(&mut self) -> Result<'a, ast::Ast<'a>> {
+        let main = self.scope_body()?;
+        self.expect(Token::Eof)?;
+        Ok(ast::Ast { main })
     }
 }
 
@@ -223,4 +243,3 @@ fn bench_lex(b: &mut ::test::Bencher) {
         while lexer.next() != Token::Eof {}
     })
 }
-    
