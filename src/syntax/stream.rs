@@ -41,7 +41,7 @@ impl<P: Peekable> Stream for P {
 }
 
 pub struct PeekStream<S: Stream> {
-    stream: S,
+    pub stream: S,
     peeked: S::Item,
 }
 
@@ -61,5 +61,35 @@ impl<S: Stream> Peekable for PeekStream<S> {
 
     fn bump(&mut self) {
         self.peeked = self.stream.next();
+    }
+}
+
+pub struct PeekIter<I: Iterator>
+    where I::Item: Copy + PartialEq
+{
+    pub iter: I,
+    peeked: Option<I::Item>,
+}
+
+impl<I: Iterator> PeekIter<I> 
+    where I::Item: Copy + PartialEq
+{
+    pub fn new(mut iter: I) -> Self {
+        let peeked = iter.next();
+        PeekIter { iter, peeked }
+    }
+}
+
+impl<I: Iterator> Peekable for PeekIter<I>
+    where I::Item: Copy + PartialEq
+{
+    type Item = Option<I::Item>;
+
+    fn peek(&self) -> Self::Item {
+        self.peeked
+    }
+
+    fn bump(&mut self) {
+        self.peeked = self.iter.next();
     }
 }

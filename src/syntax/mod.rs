@@ -5,5 +5,5 @@ mod token;
 
 pub use self::parse::Parser;
 
-use self::stream::{Peekable, PeekStream, Stream};
+use self::stream::*;
 use self::token::Token;

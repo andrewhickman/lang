@@ -242,7 +242,7 @@ fn bench_term(b: &mut ::test::Bencher) {
 fn bench_decl(b: &mut ::test::Bencher) {
     let mut data = String::new();
     for _ in 0..100 {
-        data.push_str("let x;");
+        data.push_str("let x: Int;");
     }
     b.iter(|| {
         let _ = Parser::new(&data).parse();

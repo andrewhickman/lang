@@ -1,25 +1,34 @@
-mod peek;
+use std::mem::size_of;
+use std::str::Chars;
 
-use self::peek::PeekChars;
-use super::{Peekable, Stream, Token};
+use super::{Peekable, PeekIter, Stream, Token};
+
+fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
+    (end as usize - start as usize) / size_of::<T>()
+}
 
 // An iterator over tokens of data.
 pub struct Lexer<'a> {
     data: &'a str,
-    chars: PeekChars<'a>,
+    chars: PeekIter<Chars<'a>>,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(data: &'a str) -> Self {
         Lexer {
             data: data,
-            chars: PeekChars::new(data),
+            chars: PeekIter::new(data.chars()),
         }
     }
 
-    // Take an index returned by chars.index() and return the span from it to the current position.
+    fn index(&self) -> usize {
+        ptr_sub(self.data.as_ptr(), self.chars.iter.as_str().as_ptr()) 
+            - self.chars.peek().map(char::len_utf8).unwrap_or(0)
+    }
+
+    // Take an index returned by index() and return the span from it to the current position.
     fn index_data(&self, start: usize) -> &'a str {
-        &self.data[start..self.chars.index()]
+        &self.data[start..self.index()]
     }
 
     // Remove all characters satisfying pred from the stream.
@@ -39,7 +48,7 @@ impl<'a> Stream for Lexer<'a> {
         use super::Token::*;
 
         self.eat_while(char::is_whitespace);
-        let start = self.chars.index();
+        let start = self.index();
         let ch = match self.chars.next() {
             Some(ch) => ch,
             None => return Eof,
@@ -147,25 +156,4 @@ fn test_parse_tok() {
     assert_eq!(lexer.next(), Colon);
     assert_eq!(lexer.next(), Unexpected('£'));
     assert_eq!(lexer.next(), Eof);
-}
-
-#[test]
-fn test_index() {
-    let mut lexer = Lexer::new("sup");
-
-    assert_eq!(lexer.chars.index(), 0);
-    assert_eq!(&lexer.data[lexer.chars.index()..], "sup");
-    assert_eq!(lexer.chars.next(), Some('s'));
-
-    assert_eq!(lexer.chars.index(), 1);
-    assert_eq!(&lexer.data[lexer.chars.index()..], "up");
-    assert_eq!(lexer.chars.next(), Some('u'));
-
-    assert_eq!(lexer.chars.index(), 2);
-    assert_eq!(&lexer.data[lexer.chars.index()..], "p");
-    assert_eq!(lexer.chars.next(), Some('p'));
-
-    assert_eq!(lexer.chars.index(), 3);
-    assert_eq!(&lexer.data[lexer.chars.index()..], "");
-    assert_eq!(lexer.chars.next(), None);
 }
