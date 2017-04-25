@@ -8,6 +8,7 @@ pub type SymbolTable<'a> = HashMap<&'a str, Ty>;
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Ty {
+    Unknown,
     Int,
     Byte,
     Bool,
@@ -31,11 +32,11 @@ impl<'b, 'a: 'b> TyChecker<'b, 'a> {
         self.symbols.push(&mut scope.symbols);
         for statement in &mut scope.statements {
             match *statement {
-                Declaration(ref decl) => {
+                Declaration(ref mut decl) => {
                     if self.symbols.last_mut().unwrap().insert(decl.name, decl.ty).is_some() {
                         return Err(format!("variable with name {} already declared", decl.name));
                     }
-                    if let Some(ref expr) = decl.expr {
+                    if let Some(ref mut expr) = decl.expr {
                         let ty = self.expr(expr)?;
                         if ty != decl.ty {
                             return Err(format!("type mismatch: variable {} has type {:?} but \
@@ -44,7 +45,7 @@ impl<'b, 'a: 'b> TyChecker<'b, 'a> {
                         }
                     }
                 }
-                Expression(ref expr) => {
+                Expression(ref mut expr) => {
                     self.expr(expr)?;
                 },
                 Scope(ref mut scope) => {
@@ -56,15 +57,17 @@ impl<'b, 'a: 'b> TyChecker<'b, 'a> {
         Ok(())
     }
 
-    fn expr(&mut self, expr: &ast::Expr<'a>) -> Result<Ty, String> {
-        use ast::Expr::*;
+    fn expr(&mut self, expr: &mut ast::Expr<'a>) -> Result<Ty, String> {
+        use ast::ExprKind::*;
         use ast::Term::*;
-        match *expr {
-            Term(Literal(_)) => Ok(Ty::Int),
-            Term(Ident(ident)) => self.lookup(ident),
-            Binary { op, ref args } => ops::ty_of(op, self.expr(&args.0)?, self.expr(&args.1)?),
-            Unary { ref arg, .. } => self.expr(&**arg),
-        }
+        expr.ty = match expr.kind {
+            Term(Literal(_)) => Ty::Int,
+            Term(Ident(ident)) => self.lookup(ident)?,
+            Binary { op, ref mut args } => ops::ty_of(op, self.expr(&mut args.0)?, 
+                                                      self.expr(&mut args.1)?)?,
+            Unary { ref mut arg, .. } => self.expr(&mut **arg)?,
+        };
+        Ok(expr.ty)
     }
     
     fn lookup(&self, key: &'a str) -> Result<Ty, String> {

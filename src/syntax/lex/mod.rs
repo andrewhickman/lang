@@ -1,16 +1,16 @@
-use std::mem::size_of;
-use std::str::Chars;
+use std::{mem, str};
 
 use super::{Peekable, PeekIter, Stream, Token};
+use super::Token::*;
 
 fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
-    (end as usize - start as usize) / size_of::<T>()
+    (end as usize - start as usize) / mem::size_of::<T>()
 }
 
 // An iterator over tokens of data.
 pub struct Lexer<'a> {
     data: &'a str,
-    chars: PeekIter<Chars<'a>>,
+    chars: PeekIter<str::Chars<'a>>,
 }
 
 impl<'a> Lexer<'a> {
@@ -36,8 +36,26 @@ impl<'a> Lexer<'a> {
         self.chars.eat_while(|ch| ch.map(&pred).unwrap_or(false));
     }
 
-    fn eat_char(&mut self, ch: char) -> bool {
+    fn eat(&mut self, ch: char) -> bool {
         self.chars.eat(Some(ch))
+    }
+
+    fn word(&mut self) -> Token<'a> {
+        let start = self.index();
+        self.eat_while(char::is_alphabetic);
+        return match self.index_data(start) {
+            "let" => Let,
+            "Bool" => Bool,
+            "Int" => Int,
+            "Byte" => Byte,
+            ident => Ident(ident),
+        }
+    }
+
+    fn num(&mut self) -> Token<'a> {
+        let start = self.index();
+        self.eat_while(char::is_numeric);
+        Num(self.index_data(start).parse().unwrap())
     }
 }
 
@@ -45,51 +63,40 @@ impl<'a> Stream for Lexer<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Self::Item {
-        use super::Token::*;
-
         self.eat_while(char::is_whitespace);
-        let start = self.index();
-        let ch = match self.chars.next() {
+        let ch = match self.chars.peek() {
             Some(ch) => ch,
             None => return Eof,
         };
-
+        if ch.is_alphabetic() {
+            return self.word();
+        }
+        if ch.is_numeric() {
+            return self.num();
+        }
+        self.chars.bump();
         match ch {
-            ch if ch.is_alphabetic() => {
-                self.eat_while(char::is_alphabetic);
-                match self.index_data(start) {
-                    "let" => Let,
-                    "Bool" => Bool,
-                    "Int" => Int,
-                    "Byte" => Byte,
-                    ident => Ident(ident),
-                }
-            },
-            ch if ch.is_numeric() => {
-                self.eat_while(char::is_numeric);
-                Num(self.index_data(start).parse().unwrap())
-            }
-            '+' => if self.eat_char('=') { PlusEq } else if self.eat_char('+') { PlusPlus } else { Plus },
-            '-' => if self.eat_char('=') { MinusEq } else if self.eat_char('-') { MinusMinus } else { Minus },
-            '&' => if self.eat_char('=') { AndEq } else if self.eat_char('&') { AndAnd } else { And },
-            '|' => if self.eat_char('=') { OrEq } else if self.eat_char('|') { OrOr } else { Or },
-            '^' => if self.eat_char('=') { CaretEq } else { Caret },
-            '*' => if self.eat_char('=') { StarEq } else { Star },
-            '/' => if self.eat_char('=') { SlashEq } else { Slash },
-            '%' => if self.eat_char('=') { PercentEq } else { Percent },
-            '=' => if self.eat_char('=') { EqEq } else { Eq },
-            '!' => if self.eat_char('=') { NotEq } else { Not },
+            '+' => if self.eat('=') { PlusEq } else if self.eat('+') { PlusPlus } else { Plus },
+            '-' => if self.eat('=') { MinusEq } else if self.eat('-') { MinusMinus } else { Minus },
+            '&' => if self.eat('=') { AndEq } else if self.eat('&') { AndAnd } else { And },
+            '|' => if self.eat('=') { OrEq } else if self.eat('|') { OrOr } else { Or },
+            '^' => if self.eat('=') { CaretEq } else { Caret },
+            '*' => if self.eat('=') { StarEq } else { Star },
+            '/' => if self.eat('=') { SlashEq } else { Slash },
+            '%' => if self.eat('=') { PercentEq } else { Percent },
+            '=' => if self.eat('=') { EqEq } else { Eq },
+            '!' => if self.eat('=') { NotEq } else { Not },
             '(' => OpenParen,
             ')' => CloseParen,
             '{' => OpenBrace,
             '}' => CloseBrace,
-            '<' => if self.eat_char('=') { Le } else if self.eat_char('<') { 
-                if self.eat_char('=') { ShlEq } else { Shl }
+            '<' => if self.eat('=') { Le } else if self.eat('<') { 
+                if self.eat('=') { ShlEq } else { Shl }
             } else { 
                 Lt 
             },
-            '>' => if self.eat_char('=') { Ge } else if self.eat_char('>') { 
-                if self.eat_char('=') { ShrEq } else { Shr }
+            '>' => if self.eat('=') { Ge } else if self.eat('>') { 
+                if self.eat('=') { ShrEq } else { Shr }
             } else { 
                 Gt 
             },
@@ -102,11 +109,9 @@ impl<'a> Stream for Lexer<'a> {
 
 #[test]
 fn test_parse_tok() {
-    use super::Token::*;
-
     let mut lexer = Lexer::new("abc ᚠᛇᚻ Laȝamon γλῶσσα ಸಂಭವಿಸು 123 * / % + - >> << <= < >= > == != 
                                 & ^ | && || = *= /= %= += -= >>= <<= &= ^= |= ++ -- let Int Bool 
-                                Byte ( ) { } ; : £");
+                                Byte ( ) { } ; : £ end");
     assert_eq!(lexer.next(), Ident("abc"));
     assert_eq!(lexer.next(), Ident("ᚠᛇᚻ"));
     assert_eq!(lexer.next(), Ident("Laȝamon"));
@@ -155,5 +160,6 @@ fn test_parse_tok() {
     assert_eq!(lexer.next(), Semicolon);
     assert_eq!(lexer.next(), Colon);
     assert_eq!(lexer.next(), Unexpected('£'));
+    assert_eq!(lexer.next(), Ident("end"));
     assert_eq!(lexer.next(), Eof);
 }

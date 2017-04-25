@@ -34,16 +34,16 @@ impl<'a> Display for Statement<'a> {
 
 impl<'a> Display for Expr<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        match *self {
-            Expr::Term(ref term) => write!(f, "{}", term),
-            Expr::Unary { ref op, ref arg } => {
+        match self.kind {
+            ExprKind::Term(ref term) => write!(f, "{}", term),
+            ExprKind::Unary { ref op, ref arg } => {
                 use self::UnaryOp::*;
                 match *op {
                     Not | Plus | Minus | PreIncr | PreDecr => write!(f, "({} {})", op, arg),
                     PostIncr | PostDecr => write!(f, "({} {})", arg, op),
                 }
             }
-            Expr::Binary { ref op, ref args } => {
+            ExprKind::Binary { ref op, ref args } => {
                 let (ref left, ref right) = **args;
                 write!(f, "({} {} {})", left, op, right)
             },

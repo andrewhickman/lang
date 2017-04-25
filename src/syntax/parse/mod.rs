@@ -4,7 +4,7 @@ use std::result;
 
 use {ast, typeck};
 use self::error::{err, Error};
-use super::{Peekable, PeekStream, lex, Stream, Token};
+use super::*;
 
 pub type Result<'a, T> = result::Result<T, Error<'a>>;
 
@@ -13,12 +13,12 @@ pub struct Parser<'a> {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Associativity {
+enum Associativity {
     Left, Right
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct BinaryOp {
+struct BinaryOp {
     op: ast::BinaryOp,
     lvl: u8,
     assoc: Associativity,
@@ -50,8 +50,8 @@ impl<'a> Parser<'a> {
         }
     }
     
-    pub fn postfix_expr(&mut self, term: ast::Term<'a>) -> Result<'a, ast::Expr<'a>> {
-        let mut arg = ast::Expr::Term(term);
+    fn postfix_expr(&mut self, term: ast::Term<'a>) -> Result<'a, ast::Expr<'a>> {
+        let mut arg = ast::Expr::term(term);
         loop {
             let op = match self.lexer.peek() {
                 Token::PlusPlus => ast::UnaryOp::PostIncr,
@@ -59,11 +59,11 @@ impl<'a> Parser<'a> {
                 _ => return Ok(arg),
             };
             self.lexer.bump();
-            arg = ast::Expr::Unary { op, arg: Box::new(arg) };
+            arg = ast::Expr::unary(op, arg);
         }
     }
 
-    pub fn unary_expr(&mut self) -> Result<'a, ast::Expr<'a>> {
+    fn unary_expr(&mut self) -> Result<'a, ast::Expr<'a>> {
         enum OpOrTerm<'b> { Op(ast::UnaryOp), Term(ast::Term<'b>) }
 
         let next = match self.lexer.next() {
@@ -82,12 +82,12 @@ impl<'a> Parser<'a> {
             tok => return err("prefix operator, identifier or literal", tok),
         };
         match next {
-            OpOrTerm::Op(op) => Ok(ast::Expr::Unary { op, arg: Box::new(self.unary_expr()?) }),
+            OpOrTerm::Op(op) => Ok(ast::Expr::unary(op, self.unary_expr()?)),
             OpOrTerm::Term(term) => self.postfix_expr(term),
         }
     }
 
-    pub fn expr_lvl(&mut self, min_lvl: u8) -> Result<'a, ast::Expr<'a>> {
+    fn expr_lvl(&mut self, min_lvl: u8) -> Result<'a, ast::Expr<'a>> {
         let mut lhs = self.unary_expr()?; 
         while let Ok(BinaryOp { op, lvl, assoc }) = self.peek_op() {
             if min_lvl < lvl {
@@ -96,7 +96,7 @@ impl<'a> Parser<'a> {
                     Associativity::Left => self.expr_lvl(lvl),
                     Associativity::Right => self.expr_lvl(lvl - 1),
                 }?;
-                lhs = ast::Expr::Binary { op, args: Box::new((lhs, rhs)) }
+                lhs = ast::Expr::binary(op, lhs, rhs);
             } else {
                 break;
             }
@@ -104,26 +104,26 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    pub fn peek_op(&mut self) -> Result<'a, BinaryOp> {
+    fn peek_op(&mut self) -> Result<'a, BinaryOp> {
         use self::Associativity::{Left, Right};
         use ast::BinaryOp::*;
         Ok(match self.lexer.peek() {
-            Token::Star => BinaryOp { op: Mul, lvl: 10, assoc: Left },
-            Token::Slash => BinaryOp { op: Div, lvl: 10, assoc: Left },
-            Token::Percent => BinaryOp { op: Rem, lvl: 10, assoc: Left },
-            Token::Plus => BinaryOp { op: Add, lvl: 9, assoc: Left },
-            Token::Minus => BinaryOp { op: Sub, lvl: 9, assoc: Left },
-            Token::Shr => BinaryOp { op: Shr, lvl: 8, assoc: Left },
-            Token::Shl => BinaryOp { op: Shl, lvl: 8, assoc: Left },
-            Token::Lt => BinaryOp { op: Lt, lvl: 7, assoc: Left },
-            Token::Le => BinaryOp { op: Le, lvl: 7, assoc: Left },
-            Token::Gt => BinaryOp { op: Gt, lvl: 7, assoc: Left },
-            Token::Ge => BinaryOp { op: Ge, lvl: 7, assoc: Left },
-            Token::EqEq => BinaryOp { op: Eq, lvl: 6, assoc: Left },
-            Token::NotEq => BinaryOp { op: Neq, lvl: 6, assoc: Left },
-            Token::And => BinaryOp { op: BitAnd, lvl: 5, assoc: Left },
-            Token::Caret => BinaryOp { op: BitXor, lvl: 4, assoc: Left },
-            Token::Or => BinaryOp { op: BitOr, lvl: 3, assoc: Left },
+            Token::Star => BinaryOp { op: Mul, lvl: 11, assoc: Left },
+            Token::Slash => BinaryOp { op: Div, lvl: 11, assoc: Left },
+            Token::Percent => BinaryOp { op: Rem, lvl: 11, assoc: Left },
+            Token::Plus => BinaryOp { op: Add, lvl: 10, assoc: Left },
+            Token::Minus => BinaryOp { op: Sub, lvl: 10, assoc: Left },
+            Token::Shr => BinaryOp { op: Shr, lvl: 9, assoc: Left },
+            Token::Shl => BinaryOp { op: Shl, lvl: 9, assoc: Left },
+            Token::And => BinaryOp { op: BitAnd, lvl: 8, assoc: Left },
+            Token::Caret => BinaryOp { op: BitXor, lvl: 7, assoc: Left },
+            Token::Or => BinaryOp { op: BitOr, lvl: 6, assoc: Left },
+            Token::Lt => BinaryOp { op: Lt, lvl: 5, assoc: Left },
+            Token::Le => BinaryOp { op: Le, lvl: 5, assoc: Left },
+            Token::Gt => BinaryOp { op: Gt, lvl: 5, assoc: Left },
+            Token::Ge => BinaryOp { op: Ge, lvl: 5, assoc: Left },
+            Token::EqEq => BinaryOp { op: Eq, lvl: 4, assoc: Left },
+            Token::NotEq => BinaryOp { op: Neq, lvl: 4, assoc: Left },
             Token::AndAnd => BinaryOp { op: And, lvl: 3, assoc: Left },
             Token::OrOr => BinaryOp { op: Or, lvl: 2, assoc: Left },
             Token::Eq => BinaryOp { op: Assign, lvl: 1, assoc: Right },
@@ -141,11 +141,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
+    fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
         self.expr_lvl(0)
     }
 
-    pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
+    fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
         self.expect(Token::Let)?;
         let name = match self.lexer.next() {
             Token::Ident(name) => name,
@@ -161,7 +161,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Decl { name, ty, expr })
     }
 
-    pub fn statement(&mut self) -> Result<'a, ast::Statement<'a>> {
+    fn statement(&mut self) -> Result<'a, ast::Statement<'a>> {
         Ok(match self.lexer.peek() {
             Token::Let => ast::Statement::Declaration(self.decl()?),
             Token::OpenBrace => ast::Statement::Scope(self.scope()?),
@@ -169,7 +169,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn scope_body(&mut self) -> Result<'a, ast::Scope<'a>> {
+    fn scope_body(&mut self) -> Result<'a, ast::Scope<'a>> {
         let mut statements = Vec::new();
         while self.lexer.peek() != Token::CloseBrace && self.lexer.peek() != Token::Eof {
             statements.push(self.statement()?);
@@ -178,7 +178,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Scope { statements, symbols: typeck::SymbolTable::default() })
     }
     
-    pub fn scope(&mut self) -> Result<'a, ast::Scope<'a>> {
+    fn scope(&mut self) -> Result<'a, ast::Scope<'a>> {
         self.expect(Token::OpenBrace)?;
         let body = self.scope_body()?;
         self.expect(Token::CloseBrace)?;
@@ -194,37 +194,18 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 fn assert_parse_eq(left: &str, right: &str) {
-    assert_eq!(Parser::new(left).parse().unwrap(), Parser::new(right).parse().unwrap());
+    assert_eq!(&format!("{}", Parser::new(left).parse().unwrap()), right);
 }
 
 #[test]
 fn test_unary_expr() {
-    assert_parse_eq("+-+1;", "(+ (- (+ 1)));");
+    assert_parse_eq("++--1++--;", "(++ (-- ((1 ++) --)));\n");
 }
 
 #[test]
-fn test_sum_expr() {
-    assert_parse_eq("-1 + 2 * +4;", "((- 1) + (2 * (+ 4)));");
-}
-
-#[test]
-fn test_factor_expr() {
-    assert_parse_eq("1 * 2 / 4;", "((1 * 2) / 4);");
-}
-
-#[test]
-fn test_assign_expr() {
-    assert_parse_eq("x = -2 + +4;", "(x = ((- 2) + (+ 4)));");
-}
-
-#[test]
-fn test_parens() {
-    assert_parse_eq("(2 * (x + 5));", "(2 * (x + 5));");
-}
-
-#[test]
-fn test_left_associativity() {
-    assert_parse_eq("2 * a * 5 * b;", "(((2 * a) * 5) * b);");
+fn test_ops() {
+    assert_parse_eq("a = b += c | d ^ e & f + g == h * i / j <= k;", 
+                    "(a = (b += ((c | (d ^ (e & (f + g)))) == (((h * i) / j) <= k))));\n");
 }
 
 #[bench]

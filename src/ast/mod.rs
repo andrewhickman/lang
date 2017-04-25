@@ -27,7 +27,7 @@ pub enum Statement<'a> {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Expr<'a> {
+pub enum ExprKind<'a> {
     Term(Term<'a>),
     Unary {
         op: UnaryOp,
@@ -37,6 +37,32 @@ pub enum Expr<'a> {
         op: BinaryOp,
         args: Box<(Expr<'a>, Expr<'a>)>,
     },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Expr<'a> {
+    pub ty: typeck::Ty,
+    pub kind: ExprKind<'a>,
+} 
+
+impl<'a> Expr<'a> {
+    pub fn term(term: Term<'a>) -> Self {
+        Expr { ty: typeck::Ty::Unknown, kind: ExprKind::Term(term) }
+    }
+
+    pub fn unary(op: UnaryOp, arg: Expr<'a>) -> Self {
+        Expr { 
+            ty: typeck::Ty::Unknown, 
+            kind: ExprKind::Unary { op, arg: Box::new(arg) } 
+        }
+    }
+
+    pub fn binary(op: BinaryOp, lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+        Expr { 
+            ty: typeck::Ty::Unknown, 
+            kind: ExprKind::Binary { op, args: Box::new((lhs, rhs)) } 
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
