@@ -66,8 +66,8 @@ impl<'a> Stream for Lexer<'a> {
             '|' => if self.eat_char('=') { OrEq } else if self.eat_char('|') { OrOr } else { Or },
             '^' => if self.eat_char('=') { CaretEq } else { Caret },
             '*' => if self.eat_char('=') { StarEq } else { Star },
-            '/' => if self.eat_char('/') { SlashEq } else { Slash },
-            '%' => if self.eat_char('%') { PercentEq } else { Percent },
+            '/' => if self.eat_char('=') { SlashEq } else { Slash },
+            '%' => if self.eat_char('=') { PercentEq } else { Percent },
             '=' => if self.eat_char('=') { EqEq } else { Eq },
             '!' => if self.eat_char('=') { NotEq } else { Not },
             '(' => OpenParen,
@@ -95,18 +95,57 @@ impl<'a> Stream for Lexer<'a> {
 fn test_parse_tok() {
     use super::Token::*;
 
-    let mut lexer = Lexer::new("pow hello + 123 - 
-    goodbye--          			   +ghe1242232");
-    assert_eq!(lexer.next(), Ident("pow"));
-    assert_eq!(lexer.next(), Ident("hello"));
-    assert_eq!(lexer.next(), Plus);
+    let mut lexer = Lexer::new("abc ᚠᛇᚻ Laȝamon γλῶσσα ಸಂಭವಿಸು 123 * / % + - >> << <= < >= > == != 
+                                & ^ | && || = *= /= %= += -= >>= <<= &= ^= |= ++ -- let Int Bool 
+                                Byte ( ) { } ; : £");
+    assert_eq!(lexer.next(), Ident("abc"));
+    assert_eq!(lexer.next(), Ident("ᚠᛇᚻ"));
+    assert_eq!(lexer.next(), Ident("Laȝamon"));
+    assert_eq!(lexer.next(), Ident("γλῶσσα"));
+    assert_eq!(lexer.next(), Ident("ಸಂಭವಿಸು"));
     assert_eq!(lexer.next(), Num(123));
-    assert_eq!(lexer.next(), Minus);
-    assert_eq!(lexer.next(), Ident("goodbye"));
-    assert_eq!(lexer.next(), MinusMinus);
+    assert_eq!(lexer.next(), Star);
+    assert_eq!(lexer.next(), Slash);
+    assert_eq!(lexer.next(), Percent);
     assert_eq!(lexer.next(), Plus);
-    assert_eq!(lexer.next(), Ident("ghe"));
-    assert_eq!(lexer.next(), Num(1242232));
+    assert_eq!(lexer.next(), Minus);
+    assert_eq!(lexer.next(), Shr);
+    assert_eq!(lexer.next(), Shl);
+    assert_eq!(lexer.next(), Le);
+    assert_eq!(lexer.next(), Lt);
+    assert_eq!(lexer.next(), Ge);
+    assert_eq!(lexer.next(), Gt);
+    assert_eq!(lexer.next(), EqEq);
+    assert_eq!(lexer.next(), NotEq);
+    assert_eq!(lexer.next(), And);
+    assert_eq!(lexer.next(), Caret);
+    assert_eq!(lexer.next(), Or);
+    assert_eq!(lexer.next(), AndAnd);
+    assert_eq!(lexer.next(), OrOr);
+    assert_eq!(lexer.next(), Eq);
+    assert_eq!(lexer.next(), StarEq);
+    assert_eq!(lexer.next(), SlashEq);
+    assert_eq!(lexer.next(), PercentEq);
+    assert_eq!(lexer.next(), PlusEq);
+    assert_eq!(lexer.next(), MinusEq);
+    assert_eq!(lexer.next(), ShrEq);
+    assert_eq!(lexer.next(), ShlEq);
+    assert_eq!(lexer.next(), AndEq);
+    assert_eq!(lexer.next(), CaretEq);
+    assert_eq!(lexer.next(), OrEq);
+    assert_eq!(lexer.next(), PlusPlus);
+    assert_eq!(lexer.next(), MinusMinus);
+    assert_eq!(lexer.next(), Let);
+    assert_eq!(lexer.next(), Int);
+    assert_eq!(lexer.next(), Bool);
+    assert_eq!(lexer.next(), Byte);
+    assert_eq!(lexer.next(), OpenParen);
+    assert_eq!(lexer.next(), CloseParen);
+    assert_eq!(lexer.next(), OpenBrace);
+    assert_eq!(lexer.next(), CloseBrace);
+    assert_eq!(lexer.next(), Semicolon);
+    assert_eq!(lexer.next(), Colon);
+    assert_eq!(lexer.next(), Unexpected('£'));
     assert_eq!(lexer.next(), Eof);
 }
 
