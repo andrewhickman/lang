@@ -1,0 +1,17 @@
+Types
+
+-- lowest precedence
+A -> B = function
+A, B = struct
+A | B = union
+A; N = array              // note this is a unary op!
+&A = reference
+-- highest precedence
+
+A | B, C -> &D; 2 == ((A | B), C) -> ((&D), (&D))
+
+Construction
+function
+
+let x = n -> 2 * n
+

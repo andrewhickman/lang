@@ -4,12 +4,12 @@ use std::result;
 
 use {ast, typeck};
 use self::error::{err, Error};
-use super::{Peekable, PeekStream, lex, Stream, Token};
+use super::{Peekable, lex, Stream, Token};
 
-pub type Result<'a, T> = result::Result<T, Error<'a>>;
+pub type Result<'src, T> = result::Result<T, Error<'src>>;
 
-pub struct Parser<'a> {
-    lexer: PeekStream<lex::Lexer<'a>>,
+pub struct Parser<'src> {
+    lexer: Peekable<lex::Lexer<'src>>,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -24,46 +24,99 @@ pub struct BinaryOp {
     assoc: Associativity,
 }
 
-impl<'a> Parser<'a> {
-    pub fn new(data: &'a str) -> Self {
+impl<'src> Parser<'src> {
+    pub fn new(data: &'src str) -> Self {
         Parser {
-            lexer: PeekStream::new(lex::Lexer::new(data)),
+            lexer: lex::Lexer::new(data).peekable(),
         }
     }
 
-    fn expect(&mut self, tok: Token<'a>) -> Result<'a, ()> {
+    fn expect(&mut self, tok: Token<'src>) -> Result<'src, ()> {
         if self.lexer.eat(tok) {
             Ok(())
         } else {
-            err(tok, self.lexer.peek())
+            err(tok, self.lexer.peek)
         }
     }
-    
-    fn ty(&mut self) -> Result<'a, typeck::Ty> {
-        use typeck::Ty;
 
-        match self.lexer.next() {
-            Token::Byte => Ok(Ty::Byte),
-            Token::Bool => Ok(Ty::Bool),
-            Token::Int => Ok(Ty::Int),
-            tok => err("type", tok),
+    fn unary_ty(&mut self) -> Result<'src, ast::Ty> {
+        let mut ty = match self.lexer.next() {
+            Token::Byte => ast::Ty::Byte,
+            Token::Bool => ast::Ty::Bool,
+            Token::Int => ast::Ty::Int,
+            Token::And => ast::Ty::Ref(Box::new(self.ty()?)),
+            Token::AndAnd => ast::Ty::Ref(Box::new(ast::Ty::Ref(Box::new(self.ty()?)))),
+            Token::OpenParen => {
+                let ty = self.ty()?;
+                self.expect(Token::CloseParen)?;
+                ty
+            },
+            tok => return err("type", tok),
+        };
+        while self.lexer.eat(Token::Tilde) {
+            match self.lexer.next() {
+                Token::Num(size) => {
+                    ty = ast::Ty::Array(Box::new(ty), size as usize);
+                }
+                tok => return err("integer literal", tok),
+            }
+        }
+        Ok(ty)
+    }
+
+    fn sum_ty(&mut self) -> Result<'src, ast::Ty> {
+        let ty = self.unary_ty()?;
+        if self.lexer.peek == Token::Or {
+            let mut args = vec![ty];
+            while self.lexer.eat(Token::Or) {
+                args.push(self.unary_ty()?);
+            }
+            Ok(ast::Ty::Sum(args))
+        } else {
+            Ok(ty)
         }
     }
+
+    fn prod_ty(&mut self) -> Result<'src, ast::Ty> {
+        let ty = self.sum_ty()?;
+        if self.lexer.peek == Token::Comma {
+            let mut args = vec![ty];
+            while self.lexer.eat(Token::Comma) {
+                args.push(self.unary_ty()?);
+            }
+            Ok(ast::Ty::Prod(args))
+        } else {
+            Ok(ty)
+        }
+    }
+
+    fn func_ty(&mut self) -> Result<'src, ast::Ty> {
+        let lhs = self.prod_ty()?;
+        if self.lexer.eat(Token::Arrow) {
+            Ok(ast::Ty::Func(Box::new((lhs, self.func_ty()?))))            
+        } else {
+            Ok(lhs)
+        }
+    }
+
+    fn ty(&mut self) -> Result<'src, ast::Ty> {
+        self.func_ty()
+    }
     
-    pub fn postfix_expr(&mut self, term: ast::Term<'a>) -> Result<'a, ast::Expr<'a>> {
+    fn postfix_expr(&mut self, term: ast::Term<'src>) -> Result<'src, ast::Expr<'src>> {
         let mut arg = ast::Expr::Term(term);
         loop {
-            let op = match self.lexer.peek() {
+            let op = match self.lexer.peek {
                 Token::PlusPlus => ast::UnaryOp::PostIncr,
                 Token::MinusMinus => ast::UnaryOp::PostDecr,
                 _ => return Ok(arg),
             };
-            self.lexer.bump();
+            self.lexer.next();
             arg = ast::Expr::Unary { op, arg: Box::new(arg) };
         }
     }
 
-    pub fn unary_expr(&mut self) -> Result<'a, ast::Expr<'a>> {
+    fn unary_expr(&mut self) -> Result<'src, ast::Expr<'src>> {
         enum OpOrTerm<'b> { Op(ast::UnaryOp), Term(ast::Term<'b>) }
 
         let next = match self.lexer.next() {
@@ -87,11 +140,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn expr_lvl(&mut self, min_lvl: u8) -> Result<'a, ast::Expr<'a>> {
+    fn expr_lvl(&mut self, min_lvl: u8) -> Result<'src, ast::Expr<'src>> {
         let mut lhs = self.unary_expr()?; 
-        while let Ok(BinaryOp { op, lvl, assoc }) = self.peek_op() {
+        while let Ok(BinaryOp { op, lvl, assoc }) = self.peek_expr_op() {
             if min_lvl < lvl {
-                self.lexer.bump();
+                self.lexer.next();
                 let rhs = match assoc {
                     Associativity::Left => self.expr_lvl(lvl),
                     Associativity::Right => self.expr_lvl(lvl - 1),
@@ -104,10 +157,10 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    pub fn peek_op(&mut self) -> Result<'a, BinaryOp> {
+    fn peek_expr_op(&mut self) -> Result<'src, BinaryOp> {
         use self::Associativity::{Left, Right};
         use ast::BinaryOp::*;
-        Ok(match self.lexer.peek() {
+        Ok(match self.lexer.peek {
             Token::Star => BinaryOp { op: Mul, lvl: 10, assoc: Left },
             Token::Slash => BinaryOp { op: Div, lvl: 10, assoc: Left },
             Token::Percent => BinaryOp { op: Rem, lvl: 10, assoc: Left },
@@ -141,11 +194,11 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn expr(&mut self) -> Result<'a, ast::Expr<'a>> {
+    fn expr(&mut self) -> Result<'src, ast::Expr<'src>> {
         self.expr_lvl(0)
     }
 
-    pub fn decl(&mut self) -> Result<'a, ast::Decl<'a>> {
+    fn decl(&mut self) -> Result<'src, ast::Decl<'src>> {
         self.expect(Token::Let)?;
         let name = match self.lexer.next() {
             Token::Ident(name) => name,
@@ -153,39 +206,34 @@ impl<'a> Parser<'a> {
         };
         self.expect(Token::Colon)?;
         let ty = self.ty()?;
-        let expr = if self.lexer.eat(Token::Eq) {
-            Some(self.expr()?)
-        } else {
-            None
-        };
-        Ok(ast::Decl { name, ty, expr })
+        Ok(ast::Decl { name, ty })
     }
 
-    pub fn statement(&mut self) -> Result<'a, ast::Statement<'a>> {
-        Ok(match self.lexer.peek() {
+    fn statement(&mut self) -> Result<'src, ast::Statement<'src>> {
+        Ok(match self.lexer.peek {
             Token::Let => ast::Statement::Declaration(self.decl()?),
             Token::OpenBrace => ast::Statement::Scope(self.scope()?),
             _ => ast::Statement::Expression(self.expr()?),
         })
     }
 
-    pub fn scope_body(&mut self) -> Result<'a, ast::Scope<'a>> {
+    fn scope_body(&mut self) -> Result<'src, ast::Scope<'src>> {
         let mut statements = Vec::new();
-        while self.lexer.peek() != Token::CloseBrace && self.lexer.peek() != Token::Eof {
+        while self.lexer.peek != Token::CloseBrace && self.lexer.peek != Token::Eof {
             statements.push(self.statement()?);
             self.expect(Token::Semicolon)?;
         }
         Ok(ast::Scope { statements, symbols: typeck::SymbolTable::default() })
     }
     
-    pub fn scope(&mut self) -> Result<'a, ast::Scope<'a>> {
+    fn scope(&mut self) -> Result<'src, ast::Scope<'src>> {
         self.expect(Token::OpenBrace)?;
         let body = self.scope_body()?;
         self.expect(Token::CloseBrace)?;
         Ok(body)
     }
 
-    pub fn parse(&mut self) -> Result<'a, ast::Ast<'a>> {
+    pub fn parse(&mut self) -> Result<'src, ast::Ast<'src>> {
         let main = self.scope_body()?;
         self.expect(Token::Eof)?;
         Ok(ast::Ast { main })
@@ -256,7 +304,7 @@ fn bench_lex(b: &mut ::test::Bencher) {
         data.push_str("let x;");
     }
     b.iter(|| {
-        let mut lexer = PeekStream::new(lex::Lexer::new(&data));
+        let mut lexer = lex::Lexer::new(&data).peekable();
         while lexer.next() != Token::Eof {}
     })
 }

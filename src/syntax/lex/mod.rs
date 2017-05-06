@@ -1,33 +1,33 @@
 use std::mem::size_of;
 use std::str::Chars;
 
-use super::{Peekable, PeekIter, Stream, Token};
+use super::{Peekable, Stream, Token};
 
 fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
     (end as usize - start as usize) / size_of::<T>()
 }
 
 // An iterator over tokens of data.
-pub struct Lexer<'a> {
-    data: &'a str,
-    chars: PeekIter<Chars<'a>>,
+pub struct Lexer<'src> {
+    data: &'src str,
+    chars: Peekable<Chars<'src>>,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(data: &'a str) -> Self {
+impl<'src> Lexer<'src> {
+    pub fn new(data: &'src str) -> Self {
         Lexer {
             data: data,
-            chars: PeekIter::new(data.chars()),
+            chars: <Chars as Stream>::peekable(data.chars()),
         }
     }
 
     fn index(&self) -> usize {
-        ptr_sub(self.data.as_ptr(), self.chars.iter.as_str().as_ptr()) 
-            - self.chars.peek().map(char::len_utf8).unwrap_or(0)
+        ptr_sub(self.data.as_ptr(), self.chars.stream.as_str().as_ptr())
+        - self.chars.peek.map(char::len_utf8).unwrap_or(0)
     }
 
     // Take an index returned by index() and return the span from it to the current position.
-    fn index_data(&self, start: usize) -> &'a str {
+    fn index_data(&self, start: usize) -> &'src str {
         &self.data[start..self.index()]
     }
 
@@ -36,13 +36,13 @@ impl<'a> Lexer<'a> {
         self.chars.eat_while(|ch| ch.map(&pred).unwrap_or(false));
     }
 
-    fn eat_char(&mut self, ch: char) -> bool {
+    fn eat(&mut self, ch: char) -> bool {
         self.chars.eat(Some(ch))
     }
 }
 
-impl<'a> Stream for Lexer<'a> {
-    type Item = Token<'a>;
+impl<'src> Stream for Lexer<'src> {
+    type Item = Token<'src>;
 
     fn next(&mut self) -> Self::Item {
         use super::Token::*;
@@ -56,7 +56,7 @@ impl<'a> Stream for Lexer<'a> {
 
         match ch {
             ch if ch.is_alphabetic() => {
-                self.eat_while(char::is_alphabetic);
+                self.eat_while(char::is_alphanumeric);
                 match self.index_data(start) {
                     "let" => Let,
                     "Bool" => Bool,
@@ -69,32 +69,37 @@ impl<'a> Stream for Lexer<'a> {
                 self.eat_while(char::is_numeric);
                 Num(self.index_data(start).parse().unwrap())
             }
-            '+' => if self.eat_char('=') { PlusEq } else if self.eat_char('+') { PlusPlus } else { Plus },
-            '-' => if self.eat_char('=') { MinusEq } else if self.eat_char('-') { MinusMinus } else { Minus },
-            '&' => if self.eat_char('=') { AndEq } else if self.eat_char('&') { AndAnd } else { And },
-            '|' => if self.eat_char('=') { OrEq } else if self.eat_char('|') { OrOr } else { Or },
-            '^' => if self.eat_char('=') { CaretEq } else { Caret },
-            '*' => if self.eat_char('=') { StarEq } else { Star },
-            '/' => if self.eat_char('=') { SlashEq } else { Slash },
-            '%' => if self.eat_char('=') { PercentEq } else { Percent },
-            '=' => if self.eat_char('=') { EqEq } else { Eq },
-            '!' => if self.eat_char('=') { NotEq } else { Not },
+            '+' => if self.eat('=') { PlusEq } else 
+                   if self.eat('+') { PlusPlus } else { Plus },
+            '-' => if self.eat('=') { MinusEq } else 
+                   if self.eat('-') { MinusMinus } else 
+                   if self.eat('>') { Arrow } else { Minus },
+            '&' => if self.eat('=') { AndEq } else 
+                   if self.eat('&') { AndAnd } else { And },
+            '|' => if self.eat('=') { OrEq } else 
+                   if self.eat('|') { OrOr } else { Or },
+            '^' => if self.eat('=') { CaretEq } else { Caret },
+            '*' => if self.eat('=') { StarEq } else { Star },
+            '/' => if self.eat('=') { SlashEq } else { Slash },
+            '%' => if self.eat('=') { PercentEq } else { Percent },
+            '=' => if self.eat('=') { EqEq } else { Eq },
+            '!' => if self.eat('=') { NotEq } else { Not },
             '(' => OpenParen,
             ')' => CloseParen,
             '{' => OpenBrace,
             '}' => CloseBrace,
-            '<' => if self.eat_char('=') { Le } else if self.eat_char('<') { 
-                if self.eat_char('=') { ShlEq } else { Shl }
-            } else { 
-                Lt 
-            },
-            '>' => if self.eat_char('=') { Ge } else if self.eat_char('>') { 
-                if self.eat_char('=') { ShrEq } else { Shr }
-            } else { 
-                Gt 
-            },
+            '<' => if self.eat('=') { Le } else 
+                   if self.eat('<') { 
+                       if self.eat('=') { ShlEq } else { Shl }
+                   } else { Lt },
+            '>' => if self.eat('=') { Ge } else 
+                   if self.eat('>') { 
+                       if self.eat('=') { ShrEq } else { Shr }
+                   } else { Gt },
             ';' => Semicolon,
+            ',' => Comma,
             ':' => Colon,
+            '~' => Tilde,
             ch => Unexpected(ch),
         }
     }

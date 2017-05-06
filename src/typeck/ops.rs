@@ -1,39 +1,37 @@
 use ast;
 
-use super::Ty;
-
-pub fn ty_of(op: ast::BinaryOp, left: Ty, right: Ty) -> Result<Ty, String> {
+pub fn ty_of(op: ast::BinaryOp, left: ast::Ty, right: ast::Ty) -> Result<ast::Ty, String> {
     use ast::BinaryOp::*;
 
     match op {
         // int . int -> int
         Mul | Div | Rem | Add | Sub | AssignMul | AssignDiv | AssignRem | AssignAdd | AssignSub => {
-            if left == Ty::Int && right == Ty::Int {
-                return Ok(Ty::Int);
+            if left == ast::Ty::Int && right == ast::Ty::Int {
+                return Ok(ast::Ty::Int);
             }
         }
         // byte . int -> byte
         Shr | Shl | AssignShr | AssignShl => {
-            if left == Ty::Byte && right == Ty::Int {
-                return Ok(Ty::Byte);
+            if left == ast::Ty::Byte && right == ast::Ty::Int {
+                return Ok(ast::Ty::Byte);
             }
         }
         // T . T -> bool
         Eq | Neq | Gt | Ge | Lt | Le => {
             if left == right {
-                return Ok(Ty::Bool);
+                return Ok(ast::Ty::Bool);
             }
         }
         // byte . byte -> byte
         BitAnd | BitXor | BitOr | AssignBitAnd | AssignBitXor | AssignBitOr => {
-            if left == Ty::Byte && right == Ty::Byte {
-                return Ok(Ty::Byte);
+            if left == ast::Ty::Byte && right == ast::Ty::Byte {
+                return Ok(ast::Ty::Byte);
             }
         }
         // bool . bool -> bool
         And | Or => {
-            if left == Ty::Bool && right == Ty::Bool {
-                return Ok(Ty::Bool);
+            if left == ast::Ty::Bool && right == ast::Ty::Bool {
+                return Ok(ast::Ty::Bool);
             }
         }
         // T . T -> T
