@@ -14,10 +14,7 @@ pub struct Lexer<'src> {
 
 impl<'src> Lexer<'src> {
     pub fn new(data: &'src str) -> Self {
-        Lexer {
-            data: data,
-            chars: <str::Chars as Stream>::peekable(data.chars()),
-        }
+        Lexer { data, chars: <str::Chars as Stream>::peekable(data.chars()) }
     }
 
     fn index(&self) -> usize {
@@ -25,12 +22,10 @@ impl<'src> Lexer<'src> {
         - self.chars.peek.map(char::len_utf8).unwrap_or(0)
     }
 
-    // Take an index returned by index() and return the span from it to the current position.
-    fn index_data(&self, start: usize) -> &'src str {
+    fn span_from(&self, start: usize) -> &'src str {
         &self.data[start..self.index()]
     }
 
-    // Remove all characters satisfying pred from the stream.
     fn eat_while<F: Fn(char) -> bool>(&mut self, pred: F) {
         self.chars.eat_while(|ch| ch.map(&pred).unwrap_or(false));
     }
@@ -56,7 +51,7 @@ impl<'src> Stream for Lexer<'src> {
         match ch {
             ch if ch.is_alphabetic() => {
                 self.eat_while(char::is_alphanumeric);
-                match self.index_data(start) {
+                match self.span_from(start) {
                     "let" => Let,
                     "Bool" => Bool,
                     "Int" => Int,
@@ -66,8 +61,8 @@ impl<'src> Stream for Lexer<'src> {
             },
             ch if ch.is_numeric() => {
                 self.eat_while(char::is_numeric);
-                Num(self.index_data(start).parse().unwrap())
-            }
+                Num(self.span_from(start).parse().unwrap())
+            },
             '+' => if self.eat('=') { PlusEq } else 
                    if self.eat('+') { PlusPlus } else { Plus },
             '-' => if self.eat('=') { MinusEq } else 
@@ -163,12 +158,4 @@ fn test_lexer() {
     assert_eq!(lexer.next(), Tilde);
     assert_eq!(lexer.next(), Arrow);
     assert_eq!(lexer.next(), Eof);
-}
-
-#[bench]
-fn bench_lex(b: &mut ::test::Bencher) {
-    b.iter(|| {
-        let mut lexer = Lexer::new("a = b += c | d ^ e & f + g == h * i / j <= k;");
-        while lexer.next() != Token::Eof {}
-    })
 }

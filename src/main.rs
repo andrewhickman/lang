@@ -1,7 +1,5 @@
 #![cfg_attr(feature="clippy", feature(plugin))]
 #![cfg_attr(feature="clippy", plugin(clippy))]
-#![feature(test)]
-extern crate test;
 
 mod ast;
 mod syntax;

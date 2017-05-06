@@ -44,8 +44,8 @@ impl<'src> Parser<'src> {
             Token::Byte => ast::Ty::Byte,
             Token::Bool => ast::Ty::Bool,
             Token::Int => ast::Ty::Int,
-            Token::And => ast::Ty::Ref(Box::new(self.ty()?)),
-            Token::AndAnd => ast::Ty::Ref(Box::new(ast::Ty::Ref(Box::new(self.ty()?)))),
+            Token::And => ast::Ty::Ref(Box::new(self.unary_ty()?)),
+            Token::AndAnd => ast::Ty::Ref(Box::new(ast::Ty::Ref(Box::new(self.unary_ty()?)))),
             Token::OpenParen => {
                 let ty = self.ty()?;
                 self.expect(Token::CloseParen)?;
@@ -256,9 +256,8 @@ fn test_ops() {
                     "(a = (b += ((c | (d ^ (e & (f + g)))) == (((h * i) / j) <= k))));\n");
 }
 
-#[bench]
-fn bench_expr(b: &mut ::test::Bencher) {
-    b.iter(|| {
-        let _ = Parser::new("a = b += c | d ^ e & f + g == h * i / j <= k;").parse();
-    })
+#[test]
+fn test_ty() {
+    assert_parse_eq("let x: Int, &Int | Bool -> &&Bool -> Byte ~ 5;", 
+                    "let x: ((Int, (&Int | Bool)) -> (&&Bool -> (Byte ~ 5)));\n");
 }
