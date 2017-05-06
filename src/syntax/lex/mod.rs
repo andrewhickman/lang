@@ -9,14 +9,14 @@ fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
 // An iterator over tokens of data.
 pub struct Lexer<'src> {
     data: &'src str,
-    chars: Peekable<Chars<'src>>,
+    chars: Peekable<str::Chars<'src>>,
 }
 
 impl<'src> Lexer<'src> {
     pub fn new(data: &'src str) -> Self {
         Lexer {
             data: data,
-            chars: <Chars as Stream>::peekable(data.chars()),
+            chars: <str::Chars as Stream>::peekable(data.chars()),
         }
     }
 
@@ -38,42 +38,21 @@ impl<'src> Lexer<'src> {
     fn eat(&mut self, ch: char) -> bool {
         self.chars.eat(Some(ch))
     }
-
-    fn word(&mut self) -> Token<'a> {
-        let start = self.index();
-        self.eat_while(char::is_alphabetic);
-        return match self.index_data(start) {
-            "let" => Let,
-            "Bool" => Bool,
-            "Int" => Int,
-            "Byte" => Byte,
-            ident => Ident(ident),
-        }
-    }
-
-    fn num(&mut self) -> Token<'a> {
-        let start = self.index();
-        self.eat_while(char::is_numeric);
-        Num(self.index_data(start).parse().unwrap())
-    }
 }
 
 impl<'src> Stream for Lexer<'src> {
     type Item = Token<'src>;
 
     fn next(&mut self) -> Self::Item {
+        use self::Token::*;
+
         self.eat_while(char::is_whitespace);
-        let ch = match self.chars.peek() {
+        let start = self.index();
+        let ch = match self.chars.next() {
             Some(ch) => ch,
             None => return Eof,
         };
-        if ch.is_alphabetic() {
-            return self.word();
-        }
-        if ch.is_numeric() {
-            return self.num();
-        }
-        self.chars.bump();
+
         match ch {
             ch if ch.is_alphabetic() => {
                 self.eat_while(char::is_alphanumeric);
@@ -98,7 +77,6 @@ impl<'src> Stream for Lexer<'src> {
                    if self.eat('&') { AndAnd } else { And },
             '|' => if self.eat('=') { OrEq } else 
                    if self.eat('|') { OrOr } else { Or },
->>>>>>> ae928ebbbb97ee5f428e5e033531f1d7e61d3c5c
             '^' => if self.eat('=') { CaretEq } else { Caret },
             '*' => if self.eat('=') { StarEq } else { Star },
             '/' => if self.eat('=') { SlashEq } else { Slash },
@@ -190,7 +168,7 @@ fn test_lexer() {
 #[bench]
 fn bench_lex(b: &mut ::test::Bencher) {
     b.iter(|| {
-        let mut lexer = lex::Lexer::new("a = b += c | d ^ e & f + g == h * i / j <= k;");
+        let mut lexer = Lexer::new("a = b += c | d ^ e & f + g == h * i / j <= k;");
         while lexer.next() != Token::Eof {}
     })
 }

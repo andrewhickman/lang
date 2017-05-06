@@ -6,17 +6,8 @@ use ast;
 
 pub type SymbolTable<'src> = HashMap<&'src str, ast::Ty>;
 
-<<<<<<< HEAD
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
-pub enum Ty {
-    Unknown,
-    Int,
-    Byte,
-    Bool,
-=======
 pub struct TyChecker<'sym, 'src: 'sym> {
     symbols: Vec<&'sym mut SymbolTable<'src>>,
->>>>>>> ae928ebbbb97ee5f428e5e033531f1d7e61d3c5c
 }
 
 impl<'sym, 'src: 'sym> TyChecker<'sym, 'src> {
@@ -30,6 +21,7 @@ impl<'sym, 'src: 'sym> TyChecker<'sym, 'src> {
 
     fn scope(&mut self, scope: &'sym mut ast::Scope<'src>) -> Result<(), String> {
         use ast::Statement::*;
+
         self.symbols.push(&mut scope.symbols);
         for statement in &mut scope.statements {
             match *statement {
