@@ -53,7 +53,7 @@ impl<'src> Display for Expr<'src> {
 
 impl<'src> Display for Decl<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "let {}: {:?}", self.name, self.ty)
+        write!(f, "let {}: {}", self.name, self.ty)
     }
 }
 
@@ -120,7 +120,33 @@ impl Display for Ty {
             Ty::Int => write!(f, "Int"),
             Ty::Bool => write!(f, "Bool"),
             Ty::Byte => write!(f, "Byte"),
-            Ty::
+            Ty::Array(ref ty, ref size) => write!(f, "({} ~ {})", ty, size),
+            Ty::Func(ref tys) => write!(f, "({} -> {})", tys.0, tys.1),
+            Ty::Prod(ref tys) => {
+                write!(f, "(")?;
+                let mut tys = tys.into_iter();
+                if let Some(ty) = tys.next() {
+                    write!(f, "{}", ty)?;
+                }
+                for ty in tys {
+                    write!(f, ", {}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Ty::Sum(ref tys) => {
+                write!(f, "(")?;
+                let mut tys = tys.into_iter();
+                if let Some(ty) = tys.next() {
+                    write!(f, "{}", ty)?;
+                }
+                for ty in tys {
+                    write!(f, " | {}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Ty::Ref(ref ty) => {
+                write!(f, "&{}", ty)
+            }
         }
     }
 }

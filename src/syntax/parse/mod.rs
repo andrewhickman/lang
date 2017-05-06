@@ -82,7 +82,7 @@ impl<'src> Parser<'src> {
         if self.lexer.peek == Token::Comma {
             let mut args = vec![ty];
             while self.lexer.eat(Token::Comma) {
-                args.push(self.unary_ty()?);
+                args.push(self.sum_ty()?);
             }
             Ok(ast::Ty::Prod(args))
         } else {
@@ -273,38 +273,4 @@ fn test_parens() {
 #[test]
 fn test_left_associativity() {
     assert_parse_eq("2 * a * 5 * b;", "(((2 * a) * 5) * b);");
-}
-
-#[bench]
-fn bench_term(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("x;");
-    }
-    b.iter(|| {
-        let _ = Parser::new(&data).parse();
-    })
-}
-
-#[bench]
-fn bench_decl(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("let x: Int;");
-    }
-    b.iter(|| {
-        let _ = Parser::new(&data).parse();
-    })
-}
-
-#[bench]
-fn bench_lex(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("let x;");
-    }
-    b.iter(|| {
-        let mut lexer = lex::Lexer::new(&data).peekable();
-        while lexer.next() != Token::Eof {}
-    })
 }

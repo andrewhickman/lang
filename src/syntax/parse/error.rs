@@ -12,7 +12,7 @@ pub struct Error<'src> {
 impl<'src> Error<'src> {
     pub fn new<E: fmt::Display>(expected: E, found: Token<'src>) -> Self {
         Error { 
-            message: format!("expected {}, found token '{}'", expected, found), found
+            message: format!("expected {}, found {}", expected, found), found
         }
     }
 }

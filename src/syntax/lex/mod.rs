@@ -100,18 +100,18 @@ impl<'src> Stream for Lexer<'src> {
             ',' => Comma,
             ':' => Colon,
             '~' => Tilde,
-            ch => Unexpected(ch),
+            ch => Invalid(ch),
         }
     }
 }
 
 #[test]
-fn test_parse_tok() {
+fn test_lexer() {
     use super::Token::*;
 
     let mut lexer = Lexer::new("abc ᚠᛇᚻ Laȝamon γλῶσσα ಸಂಭವಿಸು 123 * / % + - >> << <= < >= > == != 
                                 & ^ | && || = *= /= %= += -= >>= <<= &= ^= |= ++ -- let Int Bool 
-                                Byte ( ) { } ; : £");
+                                Byte ( ) { } ; : £ , ~ ->");
     assert_eq!(lexer.next(), Ident("abc"));
     assert_eq!(lexer.next(), Ident("ᚠᛇᚻ"));
     assert_eq!(lexer.next(), Ident("Laȝamon"));
@@ -159,6 +159,9 @@ fn test_parse_tok() {
     assert_eq!(lexer.next(), CloseBrace);
     assert_eq!(lexer.next(), Semicolon);
     assert_eq!(lexer.next(), Colon);
-    assert_eq!(lexer.next(), Unexpected('£'));
+    assert_eq!(lexer.next(), Invalid('£'));
+    assert_eq!(lexer.next(), Comma);
+    assert_eq!(lexer.next(), Tilde);
+    assert_eq!(lexer.next(), Arrow);
     assert_eq!(lexer.next(), Eof);
 }
