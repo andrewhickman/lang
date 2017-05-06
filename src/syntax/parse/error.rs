@@ -4,30 +4,30 @@ use std::fmt;
 use super::Token;
 
 #[derive(Debug)]
-pub struct Error<'a> {
+pub struct Error<'src> {
     message: String,
-    found: Token<'a>,
+    found: Token<'src>,
 }
 
-impl<'a> Error<'a> {
-    pub fn new<E: fmt::Display>(expected: E, found: Token<'a>) -> Self {
+impl<'src> Error<'src> {
+    pub fn new<E: fmt::Display>(expected: E, found: Token<'src>) -> Self {
         Error { 
-            message: format!("expected {}, found token '{}'", expected, found), found
+            message: format!("expected {}, found {}", expected, found), found
         }
     }
 }
 
-pub fn err<'a, E: fmt::Display, T>(expected: E, found: Token<'a>) -> Result<T, Error<'a>> {
+pub fn err<'src, E: fmt::Display, T>(expected: E, found: Token<'src>) -> Result<T, Error<'src>> {
     Err(Error::new(expected, found))
 }
 
-impl<'a> fmt::Display for Error<'a> {
+impl<'src> fmt::Display for Error<'src> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Parse error: {}.", self.description())
     }
 }
 
-impl<'a> StdError for Error<'a> {
+impl<'src> StdError for Error<'src> {
     fn description(&self) -> &str {
         &self.message
     }

@@ -1,32 +1,25 @@
 mod print;
+mod ty;
+mod expr;
+
+pub use self::expr::*;
+pub use self::ty::*;
 
 use typeck;
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Ast<'a> {
-    pub main: Scope<'a>,
+pub struct Ast<'src> {
+    pub main: Scope<'src>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Scope<'a> {
-    pub symbols: typeck::SymbolTable<'a>,
-    pub statements: Vec<Statement<'a>>,
+pub struct Scope<'src> {
+    pub symbols: typeck::SymbolTable<'src>,
+    pub statements: Vec<Statement<'src>>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Term<'a> {
-    Literal(u32),
-    Ident(&'a str),
-}
-
-#[derive(Debug, Eq, PartialEq)]
-pub enum Statement<'a> {
-    Expression(Expr<'a>),
-    Declaration(Decl<'a>),
-    Scope(Scope<'a>),
-}
-
-#[derive(Debug, Eq, PartialEq)]
+<<<<<<< HEAD
 pub enum ExprKind<'a> {
     Term(Term<'a>),
     Unary {
@@ -98,4 +91,16 @@ pub enum BinaryOp {
     Or,
     Assign, AssignMul, AssignDiv, AssignRem, AssignAdd, AssignSub, AssignShr, AssignShl, 
     AssignBitAnd, AssignBitXor, AssignBitOr,
+=======
+pub enum Statement<'src> {
+    Expression(Expr<'src>),
+    Declaration(Decl<'src>),
+    Scope(Scope<'src>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Decl<'src> {
+    pub name: &'src str,
+    pub ty: Ty,
+>>>>>>> ae928ebbbb97ee5f428e5e033531f1d7e61d3c5c
 }

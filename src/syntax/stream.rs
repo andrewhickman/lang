@@ -1,95 +1,54 @@
+use std::mem;
+
 pub trait Stream {
-    type Item: Copy + PartialEq;
+    type Item;
 
     fn next(&mut self) -> Self::Item;
+
+    fn peekable(mut self) -> Peekable<Self> where Self: Sized {
+        let peek = self.next();
+        Peekable { stream: self, peek }
+    }
 }
 
-/// An iterator with one-token lookahead.
-pub trait Peekable {
-    type Item: Copy + PartialEq;
+impl<I: Iterator> Stream for I {
+    type Item = Option<I::Item>;
 
-    fn peek(&self) -> Self::Item;
-    fn bump(&mut self);
+    fn next(&mut self) -> Self::Item {
+        <Self as Iterator>::next(self)
+    }
+}
 
-    fn eat(&mut self, item: Self::Item) -> bool {
-        if self.peek() == item {
-            self.bump();
+pub struct Peekable<S: Stream> {
+    pub stream: S,
+    pub peek: S::Item,
+}
+
+impl<S: Stream> Peekable<S> {
+    pub fn eat(&mut self, item: S::Item) -> bool
+        where S::Item: PartialEq
+    {
+        if self.peek == item {
+            self.next();
             true
         } else {
             false
         }
     }
 
-    fn eat_while<F: FnMut(Self::Item) -> bool>(&mut self, mut pred: F) -> usize {
-        let mut count = 0;
-        while pred(self.peek()) {
-            self.bump();
-            count += 1;
+    pub fn eat_while<F: FnMut(S::Item) -> bool>(&mut self, mut pred: F) 
+        where S::Item: Copy
+    {
+        while pred(self.peek) {
+            self.next();
         }
-        count
     }
 }
 
-impl<P: Peekable> Stream for P {
-    type Item = P::Item;
-
-    fn next(&mut self) -> Self::Item {
-        let item = self.peek();
-        self.bump();
-        item
-    }
-}
-
-pub struct PeekStream<S: Stream> {
-    pub stream: S,
-    peeked: S::Item,
-}
-
-impl<S: Stream> PeekStream<S> {
-    pub fn new(mut stream: S) -> Self {
-        let peeked = stream.next();
-        PeekStream { stream, peeked }
-    }
-}
-
-impl<S: Stream> Peekable for PeekStream<S> {
+impl<S: Stream> Stream for Peekable<S> {
     type Item = S::Item;
 
-    fn peek(&self) -> Self::Item {
-        self.peeked
-    }
-
-    fn bump(&mut self) {
-        self.peeked = self.stream.next();
-    }
-}
-
-pub struct PeekIter<I: Iterator>
-    where I::Item: Copy + PartialEq
-{
-    pub iter: I,
-    peeked: Option<I::Item>,
-}
-
-impl<I: Iterator> PeekIter<I> 
-    where I::Item: Copy + PartialEq
-{
-    pub fn new(mut iter: I) -> Self {
-        let peeked = iter.next();
-        PeekIter { iter, peeked }
-    }
-}
-
-impl<I: Iterator> Peekable for PeekIter<I>
-    where I::Item: Copy + PartialEq
-{
-    type Item = Option<I::Item>;
-
-    fn peek(&self) -> Self::Item {
-        self.peeked
-    }
-
-    fn bump(&mut self) {
-        self.peeked = self.iter.next();
+    fn next(&mut self) -> Self::Item {
+        mem::replace(&mut self.peek, self.stream.next())
     }
 }

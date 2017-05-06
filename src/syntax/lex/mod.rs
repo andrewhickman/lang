@@ -1,33 +1,32 @@
 use std::{mem, str};
 
-use super::*;
-use super::Token::*;
+use super::{Peekable, Stream, Token};
 
 fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
     (end as usize - start as usize) / mem::size_of::<T>()
 }
 
 // An iterator over tokens of data.
-pub struct Lexer<'a> {
-    data: &'a str,
-    chars: PeekIter<str::Chars<'a>>,
+pub struct Lexer<'src> {
+    data: &'src str,
+    chars: Peekable<Chars<'src>>,
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(data: &'a str) -> Self {
+impl<'src> Lexer<'src> {
+    pub fn new(data: &'src str) -> Self {
         Lexer {
             data: data,
-            chars: PeekIter::new(data.chars()),
+            chars: <Chars as Stream>::peekable(data.chars()),
         }
     }
 
     fn index(&self) -> usize {
-        ptr_sub(self.data.as_ptr(), self.chars.iter.as_str().as_ptr()) 
-        - self.chars.peek().map(char::len_utf8).unwrap_or(0)
+        ptr_sub(self.data.as_ptr(), self.chars.stream.as_str().as_ptr())
+        - self.chars.peek.map(char::len_utf8).unwrap_or(0)
     }
 
     // Take an index returned by index() and return the span from it to the current position.
-    fn index_data(&self, start: usize) -> &'a str {
+    fn index_data(&self, start: usize) -> &'src str {
         &self.data[start..self.index()]
     }
 
@@ -59,8 +58,8 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Stream for Lexer<'a> {
-    type Item = Token<'a>;
+impl<'src> Stream for Lexer<'src> {
+    type Item = Token<'src>;
 
     fn next(&mut self) -> Self::Item {
         self.eat_while(char::is_whitespace);
@@ -76,10 +75,30 @@ impl<'a> Stream for Lexer<'a> {
         }
         self.chars.bump();
         match ch {
-            '+' => if self.eat('=') { PlusEq } else if self.eat('+') { PlusPlus } else { Plus },
-            '-' => if self.eat('=') { MinusEq } else if self.eat('-') { MinusMinus } else { Minus },
-            '&' => if self.eat('=') { AndEq } else if self.eat('&') { AndAnd } else { And },
-            '|' => if self.eat('=') { OrEq } else if self.eat('|') { OrOr } else { Or },
+            ch if ch.is_alphabetic() => {
+                self.eat_while(char::is_alphanumeric);
+                match self.index_data(start) {
+                    "let" => Let,
+                    "Bool" => Bool,
+                    "Int" => Int,
+                    "Byte" => Byte,
+                    ident => Ident(ident),
+                }
+            },
+            ch if ch.is_numeric() => {
+                self.eat_while(char::is_numeric);
+                Num(self.index_data(start).parse().unwrap())
+            }
+            '+' => if self.eat('=') { PlusEq } else 
+                   if self.eat('+') { PlusPlus } else { Plus },
+            '-' => if self.eat('=') { MinusEq } else 
+                   if self.eat('-') { MinusMinus } else 
+                   if self.eat('>') { Arrow } else { Minus },
+            '&' => if self.eat('=') { AndEq } else 
+                   if self.eat('&') { AndAnd } else { And },
+            '|' => if self.eat('=') { OrEq } else 
+                   if self.eat('|') { OrOr } else { Or },
+>>>>>>> ae928ebbbb97ee5f428e5e033531f1d7e61d3c5c
             '^' => if self.eat('=') { CaretEq } else { Caret },
             '*' => if self.eat('=') { StarEq } else { Star },
             '/' => if self.eat('=') { SlashEq } else { Slash },
@@ -90,28 +109,30 @@ impl<'a> Stream for Lexer<'a> {
             ')' => CloseParen,
             '{' => OpenBrace,
             '}' => CloseBrace,
-            '<' => if self.eat('=') { Le } else if self.eat('<') { 
-                if self.eat('=') { ShlEq } else { Shl }
-            } else { 
-                Lt 
-            },
-            '>' => if self.eat('=') { Ge } else if self.eat('>') { 
-                if self.eat('=') { ShrEq } else { Shr }
-            } else { 
-                Gt 
-            },
+            '<' => if self.eat('=') { Le } else 
+                   if self.eat('<') { 
+                       if self.eat('=') { ShlEq } else { Shl }
+                   } else { Lt },
+            '>' => if self.eat('=') { Ge } else 
+                   if self.eat('>') { 
+                       if self.eat('=') { ShrEq } else { Shr }
+                   } else { Gt },
             ';' => Semicolon,
+            ',' => Comma,
             ':' => Colon,
-            ch => Unexpected(ch),
+            '~' => Tilde,
+            ch => Invalid(ch),
         }
     }
 }
 
 #[test]
-fn test_lex() {
+fn test_lexer() {
+    use super::Token::*;
+
     let mut lexer = Lexer::new("abc ᚠᛇᚻ Laȝamon γλῶσσα ಸಂಭವಿಸು 123 * / % + - >> << <= < >= > == != 
                                 & ^ | && || = *= /= %= += -= >>= <<= &= ^= |= ++ -- let Int Bool 
-                                Byte ( ) { } ; : £ end");
+                                Byte ( ) { } ; : £ , ~ ->");
     assert_eq!(lexer.next(), Ident("abc"));
     assert_eq!(lexer.next(), Ident("ᚠᛇᚻ"));
     assert_eq!(lexer.next(), Ident("Laȝamon"));
@@ -159,8 +180,10 @@ fn test_lex() {
     assert_eq!(lexer.next(), CloseBrace);
     assert_eq!(lexer.next(), Semicolon);
     assert_eq!(lexer.next(), Colon);
-    assert_eq!(lexer.next(), Unexpected('£'));
-    assert_eq!(lexer.next(), Ident("end"));
+    assert_eq!(lexer.next(), Invalid('£'));
+    assert_eq!(lexer.next(), Comma);
+    assert_eq!(lexer.next(), Tilde);
+    assert_eq!(lexer.next(), Arrow);
     assert_eq!(lexer.next(), Eof);
 }
 

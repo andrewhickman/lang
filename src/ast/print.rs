@@ -2,7 +2,7 @@ use std::fmt::*;
 
 use super::*;
 
-impl<'a> Display for Ast<'a> {
+impl<'src> Display for Ast<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         for statement in &self.main.statements {
             writeln!(f, "{}", statement)?;
@@ -11,7 +11,7 @@ impl<'a> Display for Ast<'a> {
     }
 }
 
-impl<'a> Display for Scope<'a> {
+impl<'src> Display for Scope<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         writeln!(f, "{{")?;
         for statement in &self.statements {
@@ -22,7 +22,7 @@ impl<'a> Display for Scope<'a> {
     }
 }
 
-impl<'a> Display for Statement<'a> {
+impl<'src> Display for Statement<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match *self {
             Statement::Expression(ref expr) => write!(f, "{};", expr),
@@ -32,7 +32,7 @@ impl<'a> Display for Statement<'a> {
     }
 }
 
-impl<'a> Display for Expr<'a> {
+impl<'src> Display for Expr<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match self.kind {
             ExprKind::Term(ref term) => write!(f, "{}", term),
@@ -51,17 +51,13 @@ impl<'a> Display for Expr<'a> {
     }
 }
 
-impl<'a> Display for Decl<'a> {
+impl<'src> Display for Decl<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "let {}: {:?}", self.name, self.ty)?;
-        if let Some(ref expr) = self.expr {
-            write!(f, " = {}", expr)?;
-        }
-        Ok(())
+        write!(f, "let {}: {}", self.name, self.ty)
     }
 }
 
-impl<'a> Display for Term<'a> {
+impl<'src> Display for Term<'src> {
     fn fmt(&self, f: &mut Formatter) -> Result {
         match *self {
             Term::Literal(num) => write!(f, "{}", num),
@@ -114,6 +110,43 @@ impl Display for BinaryOp {
             BinaryOp::AssignBitAnd => write!(f, "&="), 
             BinaryOp::AssignBitXor => write!(f, "^="), 
             BinaryOp::AssignBitOr => write!(f, "|="),
+        }
+    }
+}
+
+impl Display for Ty {
+    fn fmt(&self, f: &mut Formatter) -> Result {
+        match *self {
+            Ty::Int => write!(f, "Int"),
+            Ty::Bool => write!(f, "Bool"),
+            Ty::Byte => write!(f, "Byte"),
+            Ty::Array(ref ty, ref size) => write!(f, "({} ~ {})", ty, size),
+            Ty::Func(ref tys) => write!(f, "({} -> {})", tys.0, tys.1),
+            Ty::Prod(ref tys) => {
+                write!(f, "(")?;
+                let mut tys = tys.into_iter();
+                if let Some(ty) = tys.next() {
+                    write!(f, "{}", ty)?;
+                }
+                for ty in tys {
+                    write!(f, ", {}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Ty::Sum(ref tys) => {
+                write!(f, "(")?;
+                let mut tys = tys.into_iter();
+                if let Some(ty) = tys.next() {
+                    write!(f, "{}", ty)?;
+                }
+                for ty in tys {
+                    write!(f, " | {}", ty)?;
+                }
+                write!(f, ")")
+            }
+            Ty::Ref(ref ty) => {
+                write!(f, "&{}", ty)
+            }
         }
     }
 }
