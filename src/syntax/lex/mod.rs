@@ -1,6 +1,6 @@
 use std::{mem, str};
 
-use super::{Peekable, PeekIter, Stream, Token};
+use super::*;
 use super::Token::*;
 
 fn ptr_sub<T>(start: *const T, end: *const T) -> usize {
@@ -23,7 +23,7 @@ impl<'a> Lexer<'a> {
 
     fn index(&self) -> usize {
         ptr_sub(self.data.as_ptr(), self.chars.iter.as_str().as_ptr()) 
-            - self.chars.peek().map(char::len_utf8).unwrap_or(0)
+        - self.chars.peek().map(char::len_utf8).unwrap_or(0)
     }
 
     // Take an index returned by index() and return the span from it to the current position.
@@ -108,7 +108,7 @@ impl<'a> Stream for Lexer<'a> {
 }
 
 #[test]
-fn test_parse_tok() {
+fn test_lex() {
     let mut lexer = Lexer::new("abc ᚠᛇᚻ Laȝamon γλῶσσα ಸಂಭವಿಸು 123 * / % + - >> << <= < >= > == != 
                                 & ^ | && || = *= /= %= += -= >>= <<= &= ^= |= ++ -- let Int Bool 
                                 Byte ( ) { } ; : £ end");
@@ -162,4 +162,12 @@ fn test_parse_tok() {
     assert_eq!(lexer.next(), Unexpected('£'));
     assert_eq!(lexer.next(), Ident("end"));
     assert_eq!(lexer.next(), Eof);
+}
+
+#[bench]
+fn bench_lex(b: &mut ::test::Bencher) {
+    b.iter(|| {
+        let mut lexer = lex::Lexer::new("a = b += c | d ^ e & f + g == h * i / j <= k;");
+        while lexer.next() != Token::Eof {}
+    })
 }

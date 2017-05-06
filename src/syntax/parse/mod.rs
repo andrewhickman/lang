@@ -209,35 +209,8 @@ fn test_ops() {
 }
 
 #[bench]
-fn bench_term(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("x;");
-    }
+fn bench_expr(b: &mut ::test::Bencher) {
     b.iter(|| {
-        let _ = Parser::new(&data).parse();
-    })
-}
-
-#[bench]
-fn bench_decl(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("let x: Int;");
-    }
-    b.iter(|| {
-        let _ = Parser::new(&data).parse();
-    })
-}
-
-#[bench]
-fn bench_lex(b: &mut ::test::Bencher) {
-    let mut data = String::new();
-    for _ in 0..100 {
-        data.push_str("let x;");
-    }
-    b.iter(|| {
-        let mut lexer = PeekStream::new(lex::Lexer::new(&data));
-        while lexer.next() != Token::Eof {}
+        let _ = Parser::new("a = b += c | d ^ e & f + g == h * i / j <= k;").parse();
     })
 }
